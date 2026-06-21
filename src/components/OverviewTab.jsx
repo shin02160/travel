@@ -97,7 +97,7 @@ export default function OverviewTab() {
         background: 'linear-gradient(135deg, #C2553B, #8B3A28)',
       }}>
         <img
-          src={`https://images.unsplash.com/${trip.photo}?w=600&q=70&fit=crop`}
+          src={trip.photo.startsWith('/') ? trip.photo : `https://images.unsplash.com/${trip.photo}?w=600&q=70&fit=crop`}
           alt=""
           style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: .8 }}
         />

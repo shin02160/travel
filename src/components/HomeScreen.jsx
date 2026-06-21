@@ -34,7 +34,7 @@ function TripCard({ trip }) {
         overflow: 'hidden',
       }}>
         <img
-          src={`https://images.unsplash.com/${trip.photo}?w=400&q=70&fit=crop`}
+          src={trip.photo.startsWith('/') ? trip.photo : `https://images.unsplash.com/${trip.photo}?w=400&q=70&fit=crop`}
           alt=""
           style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: .85 }}
           loading="lazy"

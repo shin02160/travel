@@ -15,7 +15,7 @@ const SAMPLE_TRIPS = [
     nights: 2,
     budget: 200000,
     currency: 'JPY',
-    photo: 'photo-1555400038-63f5ba517a47',
+    photo: `${import.meta.env.BASE_URL}band-kingdom-2026.jpg`,
     status: 'upcoming',
   },
 ];
