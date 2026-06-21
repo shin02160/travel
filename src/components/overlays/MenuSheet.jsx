@@ -21,7 +21,7 @@ export default function MenuSheet() {
     <Sheet onClose={closeOverlay} title="빠른 메뉴">
       <div style={{ padding: '4px 20px 32px' }}>
         {items.map((item, i) => (
-          <div key={i} onClick={() => { item.action(); if (!item.admin) closeOverlay(); }} style={{
+          <div key={i} onClick={(e) => { e.stopPropagation(); item.action(); }} style={{
             display: 'flex', alignItems: 'center', gap: 14, padding: '14px 0',
             borderBottom: i < items.length - 1 ? '1px solid rgba(43,38,34,.06)' : 'none',
             cursor: 'pointer',

@@ -25,7 +25,7 @@ function StatCard({ label, value, sub, accent, progress }) {
   );
 }
 
-function TimelineDay({ day, isLast }) {
+function TimelineDay({ day, isLast, loggedIn, requireLogin, setEditingEvent }) {
   return (
     <div style={{ marginBottom: isLast ? 0 : 20 }}>
       <div style={{
@@ -36,12 +36,21 @@ function TimelineDay({ day, isLast }) {
         <span>DAY {day.day}</span>
         <span style={{ fontWeight: 500 }}>· {day.date}</span>
         {day.concert && <span style={{ fontSize: 11, background: 'var(--primary-tint)', color: 'var(--primary)', borderRadius: 10, padding: '1px 7px', fontWeight: 600 }}>공연일</span>}
+        {loggedIn && (
+          <button onClick={() => setEditingEvent({ day: day.day, event: null })} style={{
+            marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--primary)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--ff-sans)',
+            display: 'flex', alignItems: 'center', gap: 2, padding: '2px 6px',
+          }}>
+            <Icon name="plus" size={13} color="var(--primary)" />추가
+          </button>
+        )}
       </div>
       <div style={{ paddingLeft: 12, borderLeft: `2px solid ${day.concert ? 'var(--primary)' : 'rgba(43,38,34,.15)'}` }}>
         {day.events.map((ev, i) => (
-          <div key={i} style={{
+          <div key={ev.id || i} style={{
             display: 'flex', gap: 10, marginBottom: i < day.events.length - 1 ? 10 : 0,
-            position: 'relative',
+            position: 'relative', alignItems: 'flex-start',
           }}>
             <div style={{
               position: 'absolute', left: -16, top: 5,
@@ -52,12 +61,19 @@ function TimelineDay({ day, isLast }) {
             <div style={{ fontSize: 12, color: 'var(--ink-muted)', width: 38, flexShrink: 0, fontFamily: 'var(--ff-serif)', paddingTop: 2 }}>
               {ev.time}
             </div>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13.5, fontWeight: ev.highlight ? 700 : 500, color: ev.highlight ? 'var(--primary)' : 'var(--ink-body)' }}>
                 {ev.title}
               </div>
               {ev.sub && <div style={{ fontSize: 11.5, color: 'var(--ink-muted)' }}>{ev.sub}</div>}
             </div>
+            {loggedIn && (
+              <button onClick={() => setEditingEvent({ day: day.day, event: ev })} style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 2, flexShrink: 0,
+              }}>
+                <Icon name="pencil" size={13} color="var(--ink-muted)" />
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -66,7 +82,7 @@ function TimelineDay({ day, isLast }) {
 }
 
 export default function OverviewTab() {
-  const { trips, currentTripId, timeline, checks, addedChecks, deletedChecks, setOverlay } = useStore(s => ({
+  const { trips, currentTripId, timeline, checks, addedChecks, deletedChecks, setOverlay, loggedIn, requireLogin, setEditingEvent } = useStore(s => ({
     trips: s.trips,
     currentTripId: s.currentTripId,
     timeline: s.timeline,
@@ -74,6 +90,9 @@ export default function OverviewTab() {
     addedChecks: s.addedChecks,
     deletedChecks: s.deletedChecks,
     setOverlay: s.setOverlay,
+    loggedIn: s.loggedIn,
+    requireLogin: s.requireLogin,
+    setEditingEvent: s.setEditingEvent,
   }));
   const trip = getCurrentTrip(trips, currentTripId);
   const checkItems = computeCheckItems(checks, addedChecks, deletedChecks);
@@ -133,7 +152,7 @@ export default function OverviewTab() {
         <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>{trip.nights+1}일 전체</span>
       </div>
       {timeline.map((day, i) => (
-        <TimelineDay key={day.day} day={day} isLast={i === timeline.length - 1} />
+        <TimelineDay key={day.day} day={day} isLast={i === timeline.length - 1} loggedIn={loggedIn} requireLogin={requireLogin} setEditingEvent={setEditingEvent} />
       ))}
 
       {/* AI button */}

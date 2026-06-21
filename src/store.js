@@ -33,33 +33,33 @@ const SAMPLE_TIMELINE = [
   {
     day: 1, date: '07.11 토',
     events: [
-      { time: '07:25', title: '인천공항 출발 (LJ201)', sub: '진에어 · 예약번호 B8K3FJ' },
-      { time: '09:55', title: '나리타 공항 도착', sub: '입국 심사 + 수하물 수령' },
-      { time: '11:44', title: 'N\'EX 탑승 (나리타T1)', sub: '4호차 14-D · 요코하마행' },
-      { time: '13:14', title: '요코하마역 도착', sub: 'JR 네기시선 환승 → 사쿠라기초역' },
-      { time: '13:40', title: '워싱턴 호텔 짐 보관', sub: '사쿠라기초 1-101-1' },
-      { time: '14:00', title: '점심 · 크로스 게이트', sub: '호텔 저층부 식당가' },
-      { time: '15:00', title: 'FNC 밴드 킹덤 공연', sub: '피아 아레나 MM · 메인 이벤트', highlight: true },
+      { id: 'ev1', time: '07:25', title: '인천공항 출발 (LJ201)', sub: '진에어 · 예약번호 B8K3FJ' },
+      { id: 'ev2', time: '09:55', title: '나리타 공항 도착', sub: '입국 심사 + 수하물 수령' },
+      { id: 'ev3', time: '11:44', title: 'N\'EX 탑승 (나리타T1)', sub: '4호차 14-D · 요코하마행' },
+      { id: 'ev4', time: '13:14', title: '요코하마역 도착', sub: 'JR 네기시선 환승 → 사쿠라기초역' },
+      { id: 'ev5', time: '13:40', title: '워싱턴 호텔 짐 보관', sub: '사쿠라기초 1-101-1' },
+      { id: 'ev6', time: '14:00', title: '점심 · 크로스 게이트', sub: '호텔 저층부 식당가' },
+      { id: 'ev7', time: '15:00', title: 'FNC 밴드 킹덤 공연', sub: '피아 아레나 MM · 메인 이벤트', highlight: true },
     ]
   },
   {
     day: 2, date: '07.12 일', concert: true,
     events: [
-      { time: '09:00', title: '호텔 체크인 후 조식', sub: '체크인 14:00 기준, 이른 아침 미나토미라이 산책' },
-      { time: '11:00', title: '코스모 월드 / 랜드마크 타워', sub: '요코하마 대관람차·전망대' },
-      { time: '14:00', title: '차이나타운 점심', sub: '요코하마 중화가 (横浜中華街)' },
-      { time: '16:00', title: 'FNC 밴드 킹덤 공연 Day 2', sub: '피아 아레나 MM · 호텔에서 도보 11분', highlight: true },
-      { time: '21:00', title: '공연 후 미나토미라이 야경', sub: '요코하마 항구 야경 산책' },
+      { id: 'ev8', time: '09:00', title: '호텔 체크인 후 조식', sub: '체크인 14:00 기준, 이른 아침 미나토미라이 산책' },
+      { id: 'ev9', time: '11:00', title: '코스모 월드 / 랜드마크 타워', sub: '요코하마 대관람차·전망대' },
+      { id: 'ev10', time: '14:00', title: '차이나타운 점심', sub: '요코하마 중화가 (横浜中華街)' },
+      { id: 'ev11', time: '16:00', title: 'FNC 밴드 킹덤 공연 Day 2', sub: '피아 아레나 MM · 호텔에서 도보 11분', highlight: true },
+      { id: 'ev12', time: '21:00', title: '공연 후 미나토미라이 야경', sub: '요코하마 항구 야경 산책' },
     ]
   },
   {
     day: 3, date: '07.13 월',
     events: [
-      { time: '10:00', title: '호텔 체크아웃', sub: '짐 찾기 후 사쿠라기초역 이동' },
-      { time: '11:00', title: '요코하마 붉은벽돌 창고', sub: '기념품 쇼핑' },
-      { time: '13:29', title: 'N\'EX 탑승 (요코하마역)', sub: '8호차 1-A · 나리타T1행 → T2 하차 권장' },
-      { time: '14:55', title: '나리타 제2터미널 도착', sub: '도보로 제3터미널 이동' },
-      { time: '17:15', title: '귀국 출발 (LJ202)', sub: '나리타 T3 · 인천 T1 20:10 도착' },
+      { id: 'ev13', time: '10:00', title: '호텔 체크아웃', sub: '짐 찾기 후 사쿠라기초역 이동' },
+      { id: 'ev14', time: '11:00', title: '요코하마 붉은벽돌 창고', sub: '기념품 쇼핑' },
+      { id: 'ev15', time: '13:29', title: 'N\'EX 탑승 (요코하마역)', sub: '8호차 1-A · 나리타T1행 → T2 하차 권장' },
+      { id: 'ev16', time: '14:55', title: '나리타 제2터미널 도착', sub: '도보로 제3터미널 이동' },
+      { id: 'ev17', time: '17:15', title: '귀국 출발 (LJ202)', sub: '나리타 T3 · 인천 T1 20:10 도착' },
     ]
   },
 ];
@@ -125,12 +125,25 @@ export const useStore = create((set, get) => ({
   checks: {}, // { itemId: bool } overrides
   addedChecks: {}, // { cat: [{id,t,def:false}] }
   deletedChecks: {}, // { itemId: true }
+  editedChecks: {}, // { itemId: newText }
   addCheckCat: '',
   addCheckText: '',
 
   // Budget
   budgetCur: 'all', // 'all'|'jpy'|'krw'
   fxRate: 9.2,
+  budgetItems: [
+    { id: 'b1', cat: '숙박', amount: 50000, currency: 'JPY', note: '사쿠라기초 워싱턴 2박' },
+    { id: 'b2', cat: '공연', amount: 80000, currency: 'JPY', note: '밴드 킹덤 티켓' },
+    { id: 'b3', cat: '교통', amount: 30000, currency: 'JPY', note: 'NEX + 시내 교통' },
+    { id: 'b4', cat: '식비', amount: 20000, currency: 'JPY', note: '식사' },
+    { id: 'b5', cat: '쇼핑', amount: 20000, currency: 'JPY', note: 'MD + 기념품' },
+  ],
+  expenses: [
+    { id: 'e1', cat: '교통', shop: '진에어', item: '항공권 왕복', amount: 158200, currency: 'KRW', memo: 'LJ201/202', receipt: null, date: '2026-07-11' },
+  ],
+  editingExpense: null,
+  editingEvent: null,
 
   // Memo
   memoFilter: '전체',
@@ -208,20 +221,59 @@ export const useStore = create((set, get) => ({
     };
   }),
 
+  editCheckItem: (id, newText) => set(s => ({ editedChecks: { ...s.editedChecks, [id]: newText } })),
+
+  // Timeline CRUD
+  setEditingEvent: (v) => set({ editingEvent: v, overlay: v !== undefined ? 'editEvent' : null }),
+  addTimelineEvent: (day, event) => set(s => ({
+    timeline: s.timeline.map(d => d.day === day
+      ? { ...d, events: [...d.events, { ...event, id: `ev_${Date.now()}` }].sort((a, b) => a.time.localeCompare(b.time)) }
+      : d
+    )
+  })),
+  updateTimelineEvent: (day, eventId, patch) => set(s => ({
+    timeline: s.timeline.map(d => d.day === day
+      ? { ...d, events: d.events.map(e => e.id === eventId ? { ...e, ...patch } : e) }
+      : d
+    )
+  })),
+  deleteTimelineEvent: (day, eventId) => set(s => ({
+    timeline: s.timeline.map(d => d.day === day
+      ? { ...d, events: d.events.filter(e => e.id !== eventId) }
+      : d
+    )
+  })),
+
+  // Expense CRUD
+  setEditingExpense: (v) => set({ editingExpense: v, overlay: 'editExpense' }),
+  addBudgetItem: (item) => set(s => ({ budgetItems: [...s.budgetItems, { ...item, id: `b_${Date.now()}` }], overlay: null })),
+  updateBudgetItem: (id, patch) => set(s => ({ budgetItems: s.budgetItems.map(b => b.id === id ? { ...b, ...patch } : b) })),
+  deleteBudgetItem: (id) => set(s => ({ budgetItems: s.budgetItems.filter(b => b.id !== id) })),
+  addExpense: (exp) => set(s => ({ expenses: [...s.expenses, { ...exp, id: `e_${Date.now()}` }], overlay: null })),
+  updateExpense: (id, patch) => set(s => ({ expenses: s.expenses.map(e => e.id === id ? { ...e, ...patch } : e), overlay: null })),
+  deleteExpense: (id) => set(s => ({ expenses: s.expenses.filter(e => e.id !== id) })),
+
 }));
 
 export { SAMPLE_CHECKS };
 
 // Pure helpers — call outside useStore selectors to avoid infinite loops
-export function computeCheckItems(checks, addedChecks, deletedChecks) {
+export function computeCheckItems(checks, addedChecks, deletedChecks, editedChecks = {}) {
   const result = {};
   Object.entries(SAMPLE_CHECKS).forEach(([cat, items]) => {
     const added = addedChecks[cat] || [];
     const all = [...items, ...added].filter(i => !deletedChecks[i.id]);
     result[cat] = all.map(i => ({
       ...i,
+      t: editedChecks[i.id] !== undefined ? editedChecks[i.id] : i.t,
       checked: checks[i.id] !== undefined ? checks[i.id] : i.def,
     }));
+  });
+  Object.keys(addedChecks).forEach(cat => {
+    if (!result[cat]) {
+      const added = (addedChecks[cat] || []).filter(i => !deletedChecks[i.id]);
+      result[cat] = added.map(i => ({ ...i, t: editedChecks[i.id] ?? i.t, checked: checks[i.id] !== undefined ? checks[i.id] : i.def }));
+    }
   });
   return result;
 }

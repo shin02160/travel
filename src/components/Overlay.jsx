@@ -13,7 +13,7 @@ export function Sheet({ children, onClose, title, style }) {
   return (
     <>
       <Backdrop onClick={onClose} />
-      <div className="anim-sheet" style={{
+      <div className="anim-sheet" onClick={e => e.stopPropagation()} style={{
         position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
         width: 'min(100vw, 480px)',
         background: 'var(--bg-app)', borderRadius: '24px 24px 0 0',

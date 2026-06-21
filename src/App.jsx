@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useApp as useStore, getCurrentTrip } from './store';
 import './styles.css';
 import HomeScreen from './components/HomeScreen';
@@ -20,6 +21,8 @@ import MapSheet from './components/overlays/MapSheet';
 import SettingsSheet from './components/overlays/SettingsSheet';
 import MenuSheet from './components/overlays/MenuSheet';
 import AddCheckSheet from './components/overlays/AddCheckSheet';
+import EditEventSheet from './components/overlays/EditEventSheet';
+import EditExpenseSheet from './components/overlays/EditExpenseSheet';
 
 const TAB_MAP = {
   overview: OverviewTab,
@@ -42,9 +45,12 @@ export function OverlayManager() {
     settings: SettingsSheet,
     menu: MenuSheet,
     addCheck: AddCheckSheet,
+    editEvent: EditEventSheet,
+    editExpense: EditExpenseSheet,
   };
   const Component = map[overlay];
-  return Component ? <Component /> : null;
+  if (!Component) return null;
+  return createPortal(<Component />, document.body);
 }
 
 function MobileApp() {

@@ -1,26 +1,39 @@
 import { useState, useEffect, useRef } from 'react';
-import { useApp as useStore } from '../../store';
+import { useApp as useStore, getCurrentTrip } from '../../store';
 import { Sheet } from '../Overlay';
 import { Icon } from '../../icons';
 
 const SUGGESTIONS = [
-  { time: '09:00', title: '아사쿠사 이른 아침 탐방', note: '관광객 몰리기 전 한산한 센소지 감상 추천' },
-  { time: '11:30', title: '우에노 공원 피크닉', note: '근처 편의점에서 도시락 구매 후 공원에서 점심' },
-  { time: '14:00', title: '아키하바라 → 오카치마치', note: '도보 이동 가능, 빈티지 쇼핑 동선 효율 높음' },
-  { time: '18:30', title: '이케부쿠로 선샤인 시티 야경', note: '60층 전망대는 예약 없이 당일 방문 가능' },
+  { time: '11:00', title: '요코하마 차이나타운', note: '숙소 인근 도보 이동. 런치타임 전 도착 추천 (11:30 이후 웨이팅)' },
+  { time: '13:30', title: '미나토미라이 워크', note: '사쿠라기초 → 코스모 월드 → 랜드마크 타워 산책 코스' },
+  { time: '15:00', title: '공연장 사전 도착', note: '피아 아레나 MM 도보 11분. MD 줄 일찍 서기 권장' },
+  { time: '21:00', title: '요코하마 항구 야경', note: '공연 후 미나토미라이 야경 산책. 코스모 월드 야간 운영' },
 ];
 
-const AI_TEXT = `도쿄 4박 5일 일정을 분석했습니다. 현재 일정의 동선을 개선할 수 있는 포인트가 있어요.
-
-DAY 2와 DAY 4의 이동 거리가 다소 길어 피로도가 높을 수 있습니다. 아래 추천 일정을 참고해보세요.`;
-
 export default function AISheet() {
-  const { closeOverlay } = useStore(s => ({ closeOverlay: s.closeOverlay }));
+  const { closeOverlay, trips, currentTripId, bookings, timeline } = useStore(s => ({
+    closeOverlay: s.closeOverlay,
+    trips: s.trips,
+    currentTripId: s.currentTripId,
+    bookings: s.bookings,
+    timeline: s.timeline,
+  }));
+
+  const trip = getCurrentTrip(trips, currentTripId);
+  const concertBooking = bookings.find(b => b.type === 'concert');
+  const nights = trip?.nights || 0;
+  const dest = trip?.dest || '';
+
+  const AI_TEXT = `${dest} ${nights}박 ${nights + 1}일 일정을 분석했습니다.${concertBooking ? ` ${concertBooking.title}을 중심으로` : ''} 효율적인 동선을 제안해 드릴게요.\n\n숙소(사쿠라기초 워싱턴)에서 공연장(피아 아레나 MM)까지 도보 11분으로 이동이 매우 편리합니다. 공연 전후 미나토미라이 지역 탐방을 추천합니다.`;
+
   const [text, setText] = useState('');
   const [done, setDone] = useState(false);
   const idx = useRef(0);
 
   useEffect(() => {
+    idx.current = 0;
+    setText('');
+    setDone(false);
     const interval = setInterval(() => {
       if (idx.current < AI_TEXT.length) {
         setText(AI_TEXT.slice(0, idx.current + 1));
@@ -58,7 +71,7 @@ export default function AISheet() {
         <div style={{
           background: 'rgba(43,38,34,.05)', borderRadius: '4px 14px 14px 14px',
           padding: '13px 15px', marginBottom: 16,
-          fontSize: 13.5, color: 'var(--ink-body)', lineHeight: 1.65,
+          fontSize: 13.5, color: 'var(--ink-body)', lineHeight: 1.65, whiteSpace: 'pre-wrap',
         }}>
           {text}
           {!done && (

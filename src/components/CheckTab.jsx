@@ -1,14 +1,17 @@
+import { useState } from 'react';
 import { useApp as useStore, computeCheckItems } from '../store';
 import { Icon } from '../icons';
 
-function CheckItem({ item, onToggle, onDelete }) {
+function CheckItem({ item, onToggle, onDelete, loggedIn, editingId, editText, onStartEdit, onEditChange, onCommitEdit }) {
+  const isEditing = loggedIn && editingId === item.id;
+
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0',
       borderBottom: '1px solid rgba(43,38,34,.05)',
     }}>
       <button onClick={() => onToggle(item.id)} style={{
-        width: 22, height: 22, borderRadius: 6, border: 'none',
+        width: 22, height: 22, borderRadius: 6,
         background: item.checked ? 'var(--primary)' : 'transparent',
         border: item.checked ? 'none' : '1.5px solid rgba(43,38,34,.25)',
         cursor: 'pointer', flexShrink: 0, padding: 0,
@@ -17,14 +20,42 @@ function CheckItem({ item, onToggle, onDelete }) {
       }}>
         {item.checked && <Icon name="check" size={12} color="#fff" strokeWidth={2.5} />}
       </button>
-      <span style={{
-        flex: 1, fontSize: 13.5, fontWeight: 500,
-        color: item.checked ? 'var(--ink-muted)' : 'var(--ink-body)',
-        textDecoration: item.checked ? 'line-through' : 'none',
-        transition: 'color .15s',
-      }}>
-        {item.t}
-      </span>
+
+      {isEditing ? (
+        <input
+          autoFocus
+          value={editText}
+          onChange={e => onEditChange(e.target.value)}
+          onBlur={() => onCommitEdit(item.id)}
+          onKeyDown={e => { if (e.key === 'Enter') onCommitEdit(item.id); if (e.key === 'Escape') onCommitEdit(null); }}
+          style={{
+            flex: 1, fontSize: 13.5, fontWeight: 500, border: 'none', borderBottom: '1.5px solid var(--primary)',
+            outline: 'none', background: 'transparent', fontFamily: 'var(--ff-sans)', color: 'var(--ink-body)', padding: '2px 0',
+          }}
+        />
+      ) : (
+        <span
+          onDoubleClick={() => loggedIn && onStartEdit(item.id, item.t)}
+          style={{
+            flex: 1, fontSize: 13.5, fontWeight: 500,
+            color: item.checked ? 'var(--ink-muted)' : 'var(--ink-body)',
+            textDecoration: item.checked ? 'line-through' : 'none',
+            transition: 'color .15s',
+            cursor: loggedIn ? 'text' : 'default',
+          }}
+        >
+          {item.t}
+        </span>
+      )}
+
+      {loggedIn && !isEditing && (
+        <button onClick={() => onStartEdit(item.id, item.t)} style={{
+          background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+        }}>
+          <Icon name="pencil" size={13} color="var(--ink-muted)" />
+        </button>
+      )}
+
       <button onClick={() => onDelete(item.id)} style={{
         background: 'none', border: 'none', cursor: 'pointer', padding: 2,
       }}>
@@ -35,17 +66,23 @@ function CheckItem({ item, onToggle, onDelete }) {
 }
 
 export default function CheckTab() {
-  const { checks, addedChecks, deletedChecks, toggleCheck, deleteCheckItem, setOverlay, setAddCheckCat } = useStore(s => ({
+  const { checks, addedChecks, deletedChecks, editedChecks, toggleCheck, deleteCheckItem, editCheckItem, setOverlay, setAddCheckCat, loggedIn } = useStore(s => ({
     checks: s.checks,
     addedChecks: s.addedChecks,
     deletedChecks: s.deletedChecks,
+    editedChecks: s.editedChecks,
     toggleCheck: s.toggleCheck,
     deleteCheckItem: s.deleteCheckItem,
+    editCheckItem: s.editCheckItem,
     setOverlay: s.setOverlay,
     setAddCheckCat: s.setAddCheckCat,
+    loggedIn: s.loggedIn,
   }));
 
-  const checkItems = computeCheckItems(checks, addedChecks, deletedChecks);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState('');
+
+  const checkItems = computeCheckItems(checks, addedChecks, deletedChecks, editedChecks);
   const allItems = Object.values(checkItems).flat();
   const done = allItems.filter(i => i.checked).length;
   const total = allItems.length;
@@ -54,6 +91,19 @@ export default function CheckTab() {
   const handleAddClick = (cat) => {
     setAddCheckCat(cat);
     setOverlay('addCheck');
+  };
+
+  const handleStartEdit = (id, currentText) => {
+    setEditingId(id);
+    setEditText(currentText);
+  };
+
+  const handleCommitEdit = (id) => {
+    if (id && editText.trim()) {
+      editCheckItem(id, editText.trim());
+    }
+    setEditingId(null);
+    setEditText('');
   };
 
   return (
@@ -109,6 +159,12 @@ export default function CheckTab() {
                 item={item}
                 onToggle={toggleCheck}
                 onDelete={deleteCheckItem}
+                loggedIn={loggedIn}
+                editingId={editingId}
+                editText={editText}
+                onStartEdit={handleStartEdit}
+                onEditChange={setEditText}
+                onCommitEdit={handleCommitEdit}
               />
             ))
           )}
