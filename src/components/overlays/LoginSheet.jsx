@@ -66,7 +66,7 @@ export default function LoginSheet() {
               </button>
             </div>
             {error && <p style={{ color: '#e05', fontSize: 12, marginBottom: 10 }}>{error}</p>}
-            <div style={{ fontSize: 11.5, color: 'var(--ink-muted)', marginBottom: 14 }}>힌트: 1234</div>
+
             <button onClick={handleLogin} style={{
               width: '100%', padding: '14px', background: 'var(--primary)',
               border: 'none', borderRadius: 12, cursor: 'pointer',

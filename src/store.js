@@ -159,15 +159,12 @@ export const useStore = create((set, get) => ({
   closeOverlay: () => set({ overlay: null }),
 
   requireLogin: (pendingOverlay) => {
-    if (get().loggedIn) {
-      set({ overlay: pendingOverlay });
-    } else {
-      set({ overlay: 'needLogin', pendingOverlay });
-    }
+    // Always prompt for password — no bypass even when loggedIn
+    set({ overlay: 'needLogin', pendingOverlay });
   },
 
   login: (pw) => {
-    if (pw === '1234') {
+    if (pw === '103110') {
       const pending = get().pendingOverlay;
       set({ loggedIn: true, overlay: pending, pendingOverlay: null });
       return true;
