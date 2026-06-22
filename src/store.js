@@ -152,6 +152,7 @@ export const useStore = create((set, get) => ({
   tripFilter: '출발 임박순',
 
   // Actions
+  setTripFilter: (f) => set({ tripFilter: f }),
   setScreen: (screen) => set({ screen }),
   openTrip: (id) => set({ screen: 'detail', currentTripId: id, tab: 'overview' }),
   setTab: (tab) => set({ tab, overlay: null }),
@@ -222,6 +223,11 @@ export const useStore = create((set, get) => ({
 
   // Timeline CRUD
   setEditingEvent: (v) => set({ editingEvent: v, overlay: v !== undefined ? 'editEvent' : null }),
+  startEditEvent: (day, event) => {
+    // Store target event then require password; on success overlay becomes 'editEvent'
+    set({ editingEvent: { day, event } });
+    get().requireLogin('editEvent');
+  },
   addTimelineEvent: (day, event) => set(s => ({
     timeline: s.timeline.map(d => d.day === day
       ? { ...d, events: [...d.events, { ...event, id: `ev_${Date.now()}` }].sort((a, b) => a.time.localeCompare(b.time)) }

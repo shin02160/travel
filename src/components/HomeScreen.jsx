@@ -91,18 +91,20 @@ function TripCard({ trip }) {
 }
 
 export default function HomeScreen() {
-  const { trips, loggedIn, requireLogin, tripFilter, setOverlay } = useStore(s => ({
+  const { trips, requireLogin, tripFilter, setTripFilter, setOverlay } = useStore(s => ({
     trips: s.trips,
-    loggedIn: s.loggedIn,
     requireLogin: s.requireLogin,
     tripFilter: s.tripFilter,
+    setTripFilter: s.setTripFilter,
     setOverlay: s.setOverlay,
   }));
 
-  const sorted = [...trips].sort((a, b) => {
-    const da = new Date(a.startDate), db = new Date(b.startDate);
-    return da - db;
-  });
+  const sorted = [...trips].sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+  const filtered = tripFilter === '예정'
+    ? sorted.filter(t => t.status !== 'done')
+    : tripFilter === '완료'
+    ? sorted.filter(t => t.status === 'done')
+    : sorted;
 
   return (
     <div style={{ padding: '24px 20px 100px' }}>
@@ -135,17 +137,18 @@ export default function HomeScreen() {
       {/* filter chips */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, overflowX: 'auto', scrollbarWidth: 'none' }}>
         {['출발 임박순', '예정', '완료'].map(f => (
-          <div key={f} style={{
-            padding: '6px 14px', borderRadius: 20,
+          <button key={f} onClick={() => setTripFilter(f)} style={{
+            padding: '7px 16px', borderRadius: 20, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
             background: tripFilter === f ? 'var(--ink)' : 'rgba(43,38,34,.08)',
             color: tripFilter === f ? '#fff' : 'var(--ink-body)',
-            fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-          }}>{f}</div>
+            fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--ff-sans)',
+            minHeight: 36,
+          }}>{f}</button>
         ))}
       </div>
 
       {/* trip cards */}
-      {sorted.map(t => <TripCard key={t.id} trip={t} />)}
+      {filtered.map(t => <TripCard key={t.id} trip={t} />)}
     </div>
   );
 }
