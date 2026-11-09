@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
+import { loginWithPassword, logoutSession } from './authClient.js';
+import { createEmptyTripData, selectTripData, resetTripEditor } from './tripScope.js';
 
 // Shallow-wrapped hook — use this instead of useStore to avoid infinite loops with object selectors
 export const useApp = (selector) => useStore(useShallow(selector));
@@ -15,7 +17,7 @@ const SAMPLE_TRIPS = [
     nights: 2,
     budget: 200000,
     currency: 'JPY',
-    photo: `${import.meta.env.BASE_URL}band-kingdom-2026.jpg`,
+    photo: `${import.meta.env?.BASE_URL ?? '/'}band-kingdom-2026.jpg`,
     status: 'upcoming',
   },
 ];
@@ -103,16 +105,24 @@ const SAMPLE_PLACES = [
   { id: 3, name: '요코하마 차이나타운', note: '점심 · 일본 최대 중화가', cat: '맛집', color: '#2F8A55' },
 ];
 
+const canEdit = state => state.sessionExpiresAt > Date.now();
+const canEditTrip = state => state.currentTripId !== null && canEdit(state);
+let authPending = false;
+let expiryTimer;
+
 export const useStore = create((set, get) => ({
   // Navigation
   screen: 'home', // 'home' | 'detail'
-  currentTripId: null,
+  currentTripId: SAMPLE_TRIPS[0].id,
   tab: 'overview', // 'overview'|'booking'|'budget'|'memo'|'check'
   overlay: null, // null|'menu'|'create'|'fx'|'login'|'needLogin'|'ai'|'map'|'settings'|'addCheck'|'addBooking'
   pendingOverlay: null,
+  overlayContext: {},
 
   // Auth
   loggedIn: false,
+  sessionExpiresAt: 0,
+  logoutError: false,
 
   // Data
   trips: SAMPLE_TRIPS,
@@ -120,6 +130,8 @@ export const useStore = create((set, get) => ({
   timeline: SAMPLE_TIMELINE,
   memos: SAMPLE_MEMOS,
   places: SAMPLE_PLACES,
+  checkTemplate: SAMPLE_CHECKS,
+  tripDataById: {},
 
   // Checklist
   checks: {}, // { itemId: bool } overrides
@@ -153,48 +165,92 @@ export const useStore = create((set, get) => ({
 
   // Actions
   setTripFilter: (f) => set({ tripFilter: f }),
-  setScreen: (screen) => set({ screen }),
-  openTrip: (id) => set({ screen: 'detail', currentTripId: id, tab: 'overview' }),
-  setTab: (tab) => set({ tab, overlay: null }),
-  setOverlay: (overlay) => set({ overlay }),
-  closeOverlay: () => set({ overlay: null }),
+  setScreen: (screen) => set({ screen, ...resetTripEditor() }),
+  openTrip: (id) => set(s => selectTripData(s, id) || s),
+  setTab: (tab) => set({ tab, ...resetTripEditor() }),
+  setOverlay: (overlay) => set({ ...resetTripEditor(), overlay, logoutError: false }),
+  closeOverlay: () => set(resetTripEditor()),
 
-  requireLogin: (pendingOverlay) => {
-    // Always prompt for password — no bypass even when loggedIn
-    set({ overlay: 'needLogin', pendingOverlay });
-  },
-
-  login: (pw) => {
-    if (pw === '103110') {
-      const pending = get().pendingOverlay;
-      set({ loggedIn: true, overlay: pending, pendingOverlay: null });
+  requireLogin: (pendingOverlay) => set({
+    overlay: 'needLogin', pendingOverlay, overlayContext: {},
+  }),
+  login: async (pw) => {
+    if (authPending) return false;
+    authPending = true;
+    const { overlayContext, pendingOverlay } = get();
+    try {
+      const expiresAt = await loginWithPassword(pw);
+      if (!expiresAt) return false;
+      clearTimeout(expiryTimer);
+      set(state => ({
+        loggedIn: true,
+        sessionExpiresAt: expiresAt,
+        ...(state.overlayContext === overlayContext
+          ? { overlay: pendingOverlay, pendingOverlay: null }
+          : {}),
+      }));
+      expiryTimer = setTimeout(() => {
+        set({ loggedIn: false, sessionExpiresAt: 0, ...resetTripEditor() });
+      }, expiresAt - Date.now());
+      expiryTimer.unref?.();
       return true;
+    } finally {
+      authPending = false;
     }
+  },
+  logout: async () => {
+    if (authPending) return false;
+    authPending = true;
+    clearTimeout(expiryTimer);
+    set({ loggedIn: false, sessionExpiresAt: 0, ...resetTripEditor() });
+    try {
+      if (await logoutSession()) return true;
+    } catch {
+      // Keep local editing locked and offer a retry to clear the cookie.
+    } finally {
+      authPending = false;
+    }
+    set({ overlay: 'login', logoutError: true });
     return false;
   },
 
-  logout: () => set({ loggedIn: false, overlay: null }),
-
   // Trip CRUD
-  addTrip: (trip) => set((s) => ({ trips: [...s.trips, { ...trip, id: Date.now(), status: 'upcoming' }], overlay: null })),
-  deleteTrip: (id) => set((s) => ({ trips: s.trips.filter(t => t.id !== id) })),
+  addTrip: (trip) => set(s => canEdit(s) ? {
+    trips: [...s.trips, { ...trip, id: globalThis.crypto.randomUUID(), status: 'upcoming' }],
+    ...resetTripEditor(),
+  } : s),
+  deleteTrip: (id) => set(s => {
+    if (!canEdit(s) || !s.trips.some(trip => trip.id === id)) return s;
+    const tripDataById = { ...s.tripDataById };
+    delete tripDataById[id];
+    const trips = s.trips.filter(trip => trip.id !== id);
+    if (s.currentTripId !== id) return { trips, tripDataById };
+    const nextState = { ...s, trips, tripDataById, currentTripId: null };
+    return {
+      ...createEmptyTripData(),
+      ...selectTripData(nextState, trips[0]?.id),
+      ...resetTripEditor(),
+      trips, tripDataById, currentTripId: trips[0]?.id ?? null, screen: 'home', tab: 'overview',
+    };
+  }),
 
   // Booking
-  addBooking: (b) => set((s) => ({ bookings: [...s.bookings, { ...b, id: Date.now() }], overlay: null })),
+  addBooking: (b) => { if (!canEditTrip(get())) return; set((s) => ({ bookings: [...s.bookings, { ...b, id: globalThis.crypto.randomUUID() }], overlay: null })); },
 
   // Memo
   setMemoFilter: (f) => set({ memoFilter: f }),
 
   // Budget
   setBudgetCur: (c) => set({ budgetCur: c }),
-  setFxRate: (r) => set({ fxRate: r, overlay: null }),
+  setFxRate: (r) => set(s => canEditTrip(s) && Number.isFinite(r) && r > 0 ? { fxRate: r, overlay: null } : s),
 
   // Checklist
   toggleCheck: (id) => set((s) => {
+    if (!canEditTrip(s)) return s;
     const current = s.checks[id];
     // Find default value
     let def = false;
-    Object.values(SAMPLE_CHECKS).forEach(items => {
+    Object.values(s.checkTemplate).forEach(items => {
       const item = items.find(i => i.id === id);
       if (item) def = item.def;
     });
@@ -204,13 +260,15 @@ export const useStore = create((set, get) => ({
     });
     return { checks: { ...s.checks, [id]: current === undefined ? !def : !current } };
   }),
-  deleteCheckItem: (id) => set((s) => ({ deletedChecks: { ...s.deletedChecks, [id]: true } })),
+  deleteCheckItem: (id) => { if (!canEditTrip(get())) return; set((s) => ({ deletedChecks: { ...s.deletedChecks, [id]: true } })); },
   setAddCheckCat: (cat) => set({ addCheckCat: cat }),
   setAddCheckText: (t) => set({ addCheckText: t }),
   submitAddCheck: () => set((s) => {
+    if (!canEditTrip(s)) return s;
     const { addCheckCat, addCheckText, addedChecks } = s;
+    if (!Object.hasOwn(s.checkTemplate, addCheckCat)) return s;
     if (!addCheckText.trim()) return { overlay: null, addCheckText: '' };
-    const newItem = { id: `ua_${Date.now()}`, t: addCheckText.trim(), def: false };
+    const newItem = { id: `ua_${globalThis.crypto.randomUUID()}`, t: addCheckText.trim(), def: false };
     const catItems = addedChecks[addCheckCat] || [];
     return {
       addedChecks: { ...addedChecks, [addCheckCat]: [...catItems, newItem] },
@@ -219,51 +277,51 @@ export const useStore = create((set, get) => ({
     };
   }),
 
-  editCheckItem: (id, newText) => set(s => ({ editedChecks: { ...s.editedChecks, [id]: newText } })),
+  editCheckItem: (id, newText) => { if (!canEditTrip(get())) return; set(s => ({ editedChecks: { ...s.editedChecks, [id]: newText } })); },
 
   // Timeline CRUD
-  setEditingEvent: (v) => set({ editingEvent: v, overlay: v !== undefined ? 'editEvent' : null }),
+  setEditingEvent: (v) => set(s => canEditTrip(s) ? { editingEvent: v, overlay: v !== undefined ? 'editEvent' : null } : s),
   startEditEvent: (day, event) => {
     // Store target event then require password; on success overlay becomes 'editEvent'
     set({ editingEvent: { day, event } });
     get().requireLogin('editEvent');
   },
-  addTimelineEvent: (day, event) => set(s => ({
+  addTimelineEvent: (day, event) => { if (!canEditTrip(get())) return; set(s => ({
     timeline: s.timeline.map(d => d.day === day
-      ? { ...d, events: [...d.events, { ...event, id: `ev_${Date.now()}` }].sort((a, b) => a.time.localeCompare(b.time)) }
+      ? { ...d, events: [...d.events, { ...event, id: `ev_${globalThis.crypto.randomUUID()}` }].sort((a, b) => a.time.localeCompare(b.time)) }
       : d
     )
-  })),
-  updateTimelineEvent: (day, eventId, patch) => set(s => ({
+  })); },
+  updateTimelineEvent: (day, eventId, patch) => { if (!canEditTrip(get())) return; set(s => ({
     timeline: s.timeline.map(d => d.day === day
       ? { ...d, events: d.events.map(e => e.id === eventId ? { ...e, ...patch } : e) }
       : d
     )
-  })),
-  deleteTimelineEvent: (day, eventId) => set(s => ({
+  })); },
+  deleteTimelineEvent: (day, eventId) => { if (!canEditTrip(get())) return; set(s => ({
     timeline: s.timeline.map(d => d.day === day
       ? { ...d, events: d.events.filter(e => e.id !== eventId) }
       : d
     )
-  })),
+  })); },
 
   // Expense CRUD
-  setEditingExpense: (v) => set({ editingExpense: v, overlay: 'editExpense' }),
-  addBudgetItem: (item) => set(s => ({ budgetItems: [...s.budgetItems, { ...item, id: `b_${Date.now()}` }], overlay: null })),
-  updateBudgetItem: (id, patch) => set(s => ({ budgetItems: s.budgetItems.map(b => b.id === id ? { ...b, ...patch } : b) })),
-  deleteBudgetItem: (id) => set(s => ({ budgetItems: s.budgetItems.filter(b => b.id !== id) })),
-  addExpense: (exp) => set(s => ({ expenses: [...s.expenses, { ...exp, id: `e_${Date.now()}` }], overlay: null })),
-  updateExpense: (id, patch) => set(s => ({ expenses: s.expenses.map(e => e.id === id ? { ...e, ...patch } : e), overlay: null })),
-  deleteExpense: (id) => set(s => ({ expenses: s.expenses.filter(e => e.id !== id) })),
+  setEditingExpense: (v) => { if (!canEditTrip(get())) return; set({ editingExpense: v, overlay: 'editExpense' }); },
+  addBudgetItem: (item) => { if (!canEditTrip(get())) return; set(s => ({ budgetItems: [...s.budgetItems, { ...item, id: `b_${globalThis.crypto.randomUUID()}` }], overlay: null })); },
+  updateBudgetItem: (id, patch) => { if (!canEditTrip(get())) return; set(s => ({ budgetItems: s.budgetItems.map(b => b.id === id ? { ...b, ...patch } : b) })); },
+  deleteBudgetItem: (id) => { if (!canEditTrip(get())) return; set(s => ({ budgetItems: s.budgetItems.filter(b => b.id !== id) })); },
+  addExpense: (exp) => { if (!canEditTrip(get())) return; set(s => ({ expenses: [...s.expenses, { ...exp, id: `e_${globalThis.crypto.randomUUID()}` }], overlay: null })); },
+  updateExpense: (id, patch) => { if (!canEditTrip(get())) return; set(s => ({ expenses: s.expenses.map(e => e.id === id ? { ...e, ...patch } : e), overlay: null })); },
+  deleteExpense: (id) => { if (!canEditTrip(get())) return; set(s => ({ expenses: s.expenses.filter(e => e.id !== id) })); },
 
 }));
 
 export { SAMPLE_CHECKS };
 
 // Pure helpers — call outside useStore selectors to avoid infinite loops
-export function computeCheckItems(checks, addedChecks, deletedChecks, editedChecks = {}) {
+export function computeCheckItems(checks, addedChecks, deletedChecks, editedChecks = {}, checkTemplate = SAMPLE_CHECKS) {
   const result = {};
-  Object.entries(SAMPLE_CHECKS).forEach(([cat, items]) => {
+  Object.entries(checkTemplate).forEach(([cat, items]) => {
     const added = addedChecks[cat] || [];
     const all = [...items, ...added].filter(i => !deletedChecks[i.id]);
     result[cat] = all.map(i => ({

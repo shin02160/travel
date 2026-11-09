@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp as useStore, getCurrentTrip } from '../../store';
 import { Sheet } from '../Overlay';
 import { Icon } from '../../icons';
@@ -11,12 +11,11 @@ const SUGGESTIONS = [
 ];
 
 export default function AISheet() {
-  const { closeOverlay, trips, currentTripId, bookings, timeline } = useStore(s => ({
+  const { closeOverlay, trips, currentTripId, bookings } = useStore(s => ({
     closeOverlay: s.closeOverlay,
     trips: s.trips,
     currentTripId: s.currentTripId,
     bookings: s.bookings,
-    timeline: s.timeline,
   }));
 
   const trip = getCurrentTrip(trips, currentTripId);
@@ -24,27 +23,25 @@ export default function AISheet() {
   const nights = trip?.nights || 0;
   const dest = trip?.dest || '';
 
-  const AI_TEXT = `${dest} ${nights}박 ${nights + 1}일 일정을 분석했습니다.${concertBooking ? ` ${concertBooking.title}을 중심으로` : ''} 효율적인 동선을 제안해 드릴게요.\n\n숙소(사쿠라기초 워싱턴)에서 공연장(피아 아레나 MM)까지 도보 11분으로 이동이 매우 편리합니다. 공연 전후 미나토미라이 지역 탐방을 추천합니다.`;
+  const isSample = trip?.id === 1;
+  const AI_TEXT = !trip ? '여행을 선택해 주세요.' : !isSample ? '이 여행에 저장된 추천 일정이 없습니다.' : `${dest} ${nights}박 ${nights + 1}일 일정을 분석했습니다.${concertBooking ? ` ${concertBooking.title}을 중심으로` : ''} 효율적인 동선을 제안해 드릴게요.\n\n숙소(사쿠라기초 워싱턴)에서 공연장(피아 아레나 MM)까지 도보 11분으로 이동이 매우 편리합니다. 공연 전후 미나토미라이 지역 탐방을 추천합니다.`;
 
   const [text, setText] = useState('');
   const [done, setDone] = useState(false);
-  const idx = useRef(0);
 
   useEffect(() => {
-    idx.current = 0;
-    setText('');
-    setDone(false);
+    let index = 0;
     const interval = setInterval(() => {
-      if (idx.current < AI_TEXT.length) {
-        setText(AI_TEXT.slice(0, idx.current + 1));
-        idx.current++;
+      if (index < AI_TEXT.length) {
+        setText(AI_TEXT.slice(0, index + 1));
+        index++;
       } else {
         setDone(true);
         clearInterval(interval);
       }
     }, 20);
     return () => clearInterval(interval);
-  }, []);
+  }, [AI_TEXT]);
 
   return (
     <Sheet onClose={closeOverlay} title="" style={{ maxHeight: '88dvh' }}>
@@ -84,7 +81,7 @@ export default function AISheet() {
         </div>
 
         {/* suggestion cards */}
-        {done && SUGGESTIONS.map((s, i) => (
+        {done && isSample && SUGGESTIONS.map((s, i) => (
           <div key={i} style={{
             background: '#fff', borderRadius: 14, padding: '13px 14px', marginBottom: 10,
             boxShadow: 'var(--shadow-card)', border: '1px solid var(--card-border)',

@@ -78,26 +78,40 @@ function TimelineDay({ day, isLast, startEditEvent }) {
 }
 
 export default function OverviewTab() {
-  const { trips, currentTripId, timeline, checks, addedChecks, deletedChecks, setOverlay, startEditEvent } = useStore(s => ({
+  const { trips, currentTripId, timeline, checks, addedChecks, deletedChecks, editedChecks, checkTemplate, expenses, fxRate, setOverlay, startEditEvent } = useStore(s => ({
     trips: s.trips,
     currentTripId: s.currentTripId,
     timeline: s.timeline,
     checks: s.checks,
     addedChecks: s.addedChecks,
     deletedChecks: s.deletedChecks,
+    editedChecks: s.editedChecks,
+    checkTemplate: s.checkTemplate,
+    expenses: s.expenses,
+    fxRate: s.fxRate,
     setOverlay: s.setOverlay,
     startEditEvent: s.startEditEvent,
   }));
   const trip = getCurrentTrip(trips, currentTripId);
-  const checkItems = computeCheckItems(checks, addedChecks, deletedChecks);
+  const checkItems = computeCheckItems(checks, addedChecks, deletedChecks, editedChecks, checkTemplate);
   const allChecks = Object.values(checkItems).flat();
   const done = allChecks.filter(i => i.checked).length;
   const total = allChecks.length;
   const pct = total ? Math.round(done / total * 100) : 0;
 
-  const spent = 158200;
-  const remaining = trip.budget - spent;
-  const budgetPct = Math.round(spent / trip.budget * 100);
+  if (!trip) return null;
+
+  // The existing exchange rate covers JPY and KRW.
+  const rate = Number(fxRate) > 0 ? Number(fxRate) : 1;
+  const spent = expenses.reduce((sum, item) => {
+    const amount = Number(item.amount) || 0;
+    if (item.currency === trip.currency) return sum + amount;
+    if (item.currency === 'KRW' && trip.currency === 'JPY') return sum + amount / rate;
+    if (item.currency === 'JPY' && trip.currency === 'KRW') return sum + amount * rate;
+    return sum;
+  }, 0);
+  const remaining = (Number(trip.budget) || 0) - spent;
+  const currencySymbol = { JPY: '¥', KRW: '₩', USD: '$', EUR: '€' }[trip.currency] || `${trip.currency} `;
 
   const diff = Math.ceil((new Date(trip.startDate) - new Date()) / 86400000);
 
@@ -135,8 +149,8 @@ export default function OverviewTab() {
         <StatCard label="준비 완료" value={`${pct}%`} progress={pct} />
         <StatCard
           label="잔여 예산"
-          value={`¥${remaining.toLocaleString()}`}
-          sub={`/ ¥${trip.budget.toLocaleString()}`}
+          value={`${currencySymbol}${Math.round(remaining).toLocaleString()}`}
+          sub={`/ ${currencySymbol}${Number(trip.budget || 0).toLocaleString()}`}
         />
       </div>
 

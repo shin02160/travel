@@ -1,4 +1,3 @@
-import { useApp as useStore } from '../store';
 import { Icon } from '../icons';
 
 export function Backdrop({ onClick }) {

@@ -1,16 +1,37 @@
-# React + Vite
+# Travel
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React와 Vite로 만든 여행 관리 앱입니다. P0에서는 데모 여행과 새 여행의 예약, 일정, 메모, 장소, 예산, 지출, 체크리스트를 여행별로 관리합니다. 변경 내용은 탭 메모리에 저장되며 새로고침하면 초기 데모 상태로 돌아갑니다.
 
-Currently, two official plugins are available:
+## 로컬 실행
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Node.js 24에서 아래 명령을 실행합니다.
 
-## React Compiler
+```sh
+npm ci
+npm run dev
+npm run lint
+npm run build
+npm test
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+테스트는 임시 인증 값을 생성하고 루프백에서 Vite HTTP 서버를 시작합니다. 별도 계정이나 Notion 접근 권한이 필요 없습니다.
 
-## Expanding the ESLint configuration
+## 관리자 인증과 배포
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. Git 이력에 노출된 기존 관리자 비밀번호를 폐기하고, 길고 무작위인 새 비밀번호를 설정합니다. 새 비밀번호를 표준 입력으로 `node scripts/hash-password.mjs`에 전달해 해시를 생성합니다.
+2. `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"`로 별도의 세션 서명 키를 생성합니다.
+3. 로컬에서는 [.env.example](.env.example)을 참고해 `.env.local`에 `ADMIN_PASSWORD_HASH`와 `SESSION_SECRET`을 설정합니다. 배포할 때는 Vercel 프로젝트의 서버 환경변수로 등록합니다. 두 값에 `VITE_` 접두사를 붙이면 브라우저에 노출될 수 있습니다.
+4. Vercel에서 Vite 프레임워크, 빌드 명령 `npm run build`, 출력 폴더 `dist`를 사용합니다. Vite 개발 미들웨어와 Vercel Node 함수 `api/auth.js`가 각각 `/api/auth`를 제공합니다. 배포 후 HTTPS에서 로그인과 로그아웃을 확인합니다. 정적 호스팅과 `vite preview`만으로는 이 API가 실행되지 않아 관리자 로그인에 실패합니다.
+
+프로덕션 세션 쿠키는 `Secure`, `HttpOnly`, `SameSite=Strict`이며 1시간 후 만료됩니다. 앱을 새로고침하면 편집하려면 다시 로그인해야 합니다. 로그아웃은 브라우저의 쿠키를 삭제하며 이미 복제된 쿠키는 만료 시까지 유효합니다. 서명 키를 교체하면 기존 쿠키가 모두 무효화됩니다. 로그인 시도 제한은 실행 인스턴스별로 적용됩니다. 공개 운영 환경에서는 배포 계층의 공용 요청 제한을 추가로 구성해야 합니다.
+
+P0 서버에는 인증 엔드포인트만 있습니다. 데이터 편집은 브라우저 메모리에서 실행되며, 클라이언트 편집 잠금은 서버의 데이터 접근 제어와 별개입니다.
+
+## P1 Notion My Travel Hub
+
+P0 승인 후 별도 PR로 진행합니다.
+
+1. 기존 7개 DB의 데이터 소스 및 속성 ID를 조회로 확인합니다. 여행 마스터와 일정, 예약, 예산, 지출, 영수증, 체크리스트의 관계와 안정적인 Notion 페이지 ID 매핑을 문서화합니다.
+2. 브라우저에서 같은 출처의 API를 호출하고, 서버리스 함수만 서버 환경변수의 Notion 통합 토큰을 사용하도록 구성합니다. 여행 페이지 관계를 기준으로 자식 레코드를 필터링하고 공개 가능한 응답 필드를 정의합니다.
+3. 목 또는 별도 테스트 DB에서 조회 전용 연동을 먼저 검증합니다. 잘못된 여행 ID, 페이지네이션, 관계 불일치, Notion 장애를 포함합니다.
+4. 쓰기 단계에서는 모든 요청에 서버 세션과 Origin을 검사하고 대상 레코드가 요청한 여행에 속하는지 확인합니다. 분산 요청 제한, 생성 멱등성 키, 재시도와 충돌 정책을 정한 뒤 쓰기를 연결합니다. 외화·환불 집계와 영수증 업로드는 이후 단계에서 검증합니다.
