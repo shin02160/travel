@@ -200,6 +200,17 @@ body { margin: 0; font-size: 14px; }
 .travel-section, .travel-detail-layout > section { min-width: 0; }
 .travel-section-heading { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 10px; }
 .travel-section-heading p { font-size: 13px; }
+.travel-checklist-group + .travel-checklist-group { margin-top: 22px; }
+.travel-checklist-group > h3 { margin-bottom: 10px; }
+.travel-today-home { margin-bottom: 18px; }
+.travel-today { min-width: 0; }
+.travel-today-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.travel-today-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.travel-today-actions a { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 8px; color: var(--primary-hover); }
+.travel-today-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+.travel-today-next { border-color: var(--primary); background: var(--primary-soft); }
+.travel-today-next .travel-event-time { margin-top: 8px; color: var(--primary-hover); }
+.travel-today-timeline > h3 { margin-bottom: 10px; }
 .travel-reader-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .travel-reader .travel-reader-chips button { border-radius: 999px; }
 .travel-reader-filter {
@@ -269,4 +280,5 @@ body { margin: 0; font-size: 14px; }
   .travel-detail-layout { grid-template-columns: 184px minmax(0, 1fr); gap: 22px; }
   .travel-reader-tabs { flex-direction: column; align-self: start; padding: 8px; overflow: visible; }
   .travel-reader-tabs button { width: 100%; text-align: start; }
+  .travel-today-grid { grid-template-columns: minmax(0, 35fr) minmax(0, 65fr); align-items: start; }
 }

@@ -6,7 +6,7 @@ const SECTIONS = {
   schedule: ['일정명', '일시', '구분', '장소', '진행상태'],
   bookings: ['예약명', '예약유형', '예약상태', '이용일', '결제상태'],
   budgets: ['예산항목', '분류', '예산 KRW', '사용금액', '잔액'],
-  expenses: ['지출명', '분류', '결제일', '현지 금액', '통화', '원화 확정액', '집계 금액'],
+  expenses: ['지출명', '분류', '결제일', '결제자', '정산여부', '현지 금액', '통화', '원화 확정액', '집계 금액'],
   receipts: ['영수증명', '처리상태'],
   checklist: ['할 일', '분류', '상태', '단계', '기한'],
 };
@@ -43,6 +43,8 @@ function propertyValue(property) {
       return value?.start ? [value.start, value.end].filter(Boolean).join(' ~ ') : null;
     case 'number':
       return value ?? null;
+    case 'checkbox':
+      return typeof value === 'boolean' ? value : null;
     case 'formula':
     case 'rollup':
       return value?.type === 'number' ? value.number : null;
@@ -57,6 +59,32 @@ function project(page, [title, ...fields]) {
     id: page.id,
     title: propertyValue(page.properties[title]) || '제목 없음',
     fields: Object.fromEntries(fields.map(name => [name, propertyValue(page.properties[name])])),
+  };
+}
+
+function savedMapUrl(property) {
+  try {
+    const url = new URL(property?.url);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+    const googleMap = ['google.com', 'www.google.com'].includes(url.hostname) && /^\/maps(?:\/|$)/.test(url.pathname);
+    return googleMap || ['maps.google.com', 'maps.app.goo.gl', 'maps.apple.com', 'map.naver.com', 'map.kakao.com'].includes(url.hostname)
+      ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function scheduleDetails(page) {
+  const properties = page.properties;
+  const date = properties.일시?.date;
+  const relation = properties['관련 예약'];
+  return {
+    date: date?.start ? { start: date.start, end: date.end ?? null, timeZone: date.time_zone ?? null } : null,
+    note: propertyValue(properties.메모),
+    mapUrl: savedMapUrl(properties['지도 URL']),
+    sourceUrl: page.url ? `https://www.notion.so/${page.id.replaceAll('-', '')}` : null,
+    bookingIds: relation?.type === 'relation' && Array.isArray(relation.relation)
+      ? relation.relation.map(item => item.id) : [],
   };
 }
 
@@ -184,6 +212,7 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
       const expenses = key === 'receipts' ? new Map(sections.expenses.map(row => [row.id, row.title])) : null;
       sections[key] = pages.map(page => {
         const row = project(page, fields);
+        if (key === 'schedule') Object.assign(row, scheduleDetails(page));
         if (expenses) {
           const related = page.properties['관련 지출'];
           row.fields['관련 지출'] = related?.type === 'relation' && Array.isArray(related.relation)
@@ -192,6 +221,11 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
         }
         return row;
       });
+    }
+
+    const bookingIds = new Set(sections.bookings.map(row => row.id));
+    for (const event of sections.schedule) {
+      event.bookingIds = [...new Set(event.bookingIds.filter(id => bookingIds.has(id)))];
     }
 
     return sendData({ trip: project(trip, TRIP_FIELDS), sections });

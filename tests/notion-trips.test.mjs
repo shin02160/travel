@@ -144,8 +144,26 @@ test('trip list follows Notion cursors, deduplicates rows and returns safe summa
 });
 
 test('detail verifies the parent data source and scopes all six sections to exactly one trip', async () => {
-  const expense = row('expenses', { 지출명: title('교통비'), 여행: relation(tripId), '현지 금액': number(10), 결제자: title('private') });
+  const expense = row('expenses', {
+    지출명: title('교통비'), 여행: relation(tripId), '현지 금액': number(10),
+    결제자: { type: 'rich_text', rich_text: [{ plain_text: '테스트 결제자' }] },
+    정산여부: { type: 'checkbox', checkbox: false },
+  });
+  const settledExpense = row('expenses', {
+    지출명: title('숙박비'), 여행: relation(tripId), 정산여부: { type: 'checkbox', checkbox: true },
+  });
+  const olderExpense = row('expenses', { 지출명: title('식비'), 여행: relation(tripId) });
   const visibleBooking = row('bookings', { 예약명: title('숙소'), 여행: relation(tripId), 예약번호: title('private') });
+  const event = row('schedule', {
+    일정명: title('숙소 방문'), 여행: relation(tripId),
+    일시: { type: 'date', date: { start: '2026-12-05T14:00:00+08:00', end: null, time_zone: null } },
+    메모: { type: 'rich_text', rich_text: [{ plain_text: '현지 메모' }] },
+    '관련 예약': relation(visibleBooking.id, randomUUID()),
+    '지도 URL': { type: 'url', url: 'https://www.google.com/maps/search/?api=1&query=Macau' },
+  });
+  event.url = 'https://www.notion.so/trip-event';
+  const unsafeMap = row('schedule', { 일정명: title('다른 일정'), 여행: relation(tripId),
+    '지도 URL': { type: 'url', url: 'https://maps.google.com.example.org/maps' } });
   const receipt = row('receipts', { 영수증명: title('교통 영수증'), 여행: relation(tripId),
     '관련 지출': relation(expense.id, randomUUID()), '증빙 이미지': title('private') });
   const rows = {
@@ -155,7 +173,7 @@ test('detail verifies the parent data source and scopes all six sections to exac
       row('bookings', { 예약명: title('orphan') }),
       row('bookings', { 예약명: title('truncated'), 여행: { ...relation(tripId), has_more: true } }),
       row('schedule', { 예약명: title('wrong source'), 여행: relation(tripId) })],
-    expenses: [expense], receipts: [receipt],
+    schedule: [event, unsafeMap], expenses: [expense, settledExpense, olderExpense], receipts: [receipt],
   };
   const calls = [];
   const res = await read(`/api/trips/${tripId}`, async (url, init) => {
@@ -177,8 +195,17 @@ test('detail verifies the parent data source and scopes all six sections to exac
   assert.equal(res.body.trip.notionUrl, undefined);
   assert.deepEqual(Object.keys(res.body.sections), keys.slice(1));
   assert.deepEqual(res.body.sections.bookings.map(item => item.title), ['숙소']);
+  const [scheduled, otherEvent] = res.body.sections.schedule;
+  assert.deepEqual(scheduled.bookingIds, [visibleBooking.id]);
+  assert.equal(scheduled.date.start, '2026-12-05T14:00:00+08:00');
+  assert.equal(scheduled.note, '현지 메모');
+  assert.match(scheduled.sourceUrl, /^https:\/\/www\.notion\.so\/[a-f0-9]{32}$/);
+  assert.match(scheduled.mapUrl, /^https:\/\/www\.google\.com\/maps\//);
+  assert.equal(otherEvent.mapUrl, null);
+  assert.equal(res.body.sections.expenses[0].fields.결제자, '테스트 결제자');
+  assert.deepEqual(res.body.sections.expenses.map(item => item.fields.정산여부), [false, true, null]);
   assert.equal(res.body.sections.receipts[0].fields['관련 지출'], '교통비');
-  assert.doesNotMatch(JSON.stringify(res.body), /private|예약번호|결제자|증빙 이미지/);
+  assert.doesNotMatch(JSON.stringify(res.body), /private|예약번호|증빙 이미지/);
 
   const foreign = await read(`/api/trips?tripId=${tripId}`, async () => Response.json(row('schedule', {}, tripId)));
   assert.equal(foreign.statusCode, 404);

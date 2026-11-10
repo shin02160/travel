@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../icons.jsx';
+import { chooseTrips, datePart } from '../todaySchedule.js';
+import TodayDashboard from './TodayDashboard.jsx';
 import './NotionTravel.css';
 
 const TABS = {
-  overview: '개요', schedule: '일정', bookings: '예약', budgets: '예산',
+  overview: '개요', today: '오늘 일정', schedule: '일정', bookings: '예약', budgets: '예산',
   expenses: '지출', receipts: '영수증', checklist: '체크리스트',
 };
 const TAB_ICONS = {
-  overview: 'compass', schedule: 'calendar', bookings: 'plane', budgets: 'wallet',
+  overview: 'compass', today: 'calendar', schedule: 'calendar', bookings: 'plane', budgets: 'wallet',
   expenses: 'currency', receipts: 'fileText', checklist: 'check',
 };
 const COVERS = {
@@ -67,7 +69,7 @@ function Fields({ fields }) {
           <dt>{name}</dt>
           <dd className={typeof value === 'number' || DATE_FIELDS.has(name) ? 'travel-number' : undefined}>{typeof value === 'number'
             ? `${WON_FIELDS.has(name) ? '₩' : ''}${value.toLocaleString('ko-KR')}${name === '현지 금액' && fields.통화 ? ` ${fields.통화}` : ''}`
-            : value || '—'}</dd>
+            : typeof value === 'boolean' ? (value ? '정산 완료' : '미정산') : value || '—'}</dd>
         </div>
       ))}
     </dl>
@@ -211,7 +213,23 @@ function Timeline({ rows }) {
   ));
 }
 
-function TripDetail({ data, tab, onSelectTab }) {
+function RecordList({ rows, tab }) {
+  return (
+    <ul className="travel-card-grid travel-reader-list">
+      {rows.map(row => {
+        const complete = tab === 'checklist' && row.fields.상태 === '완료';
+        return (
+          <li key={row.id} className={`travel-reader-card${complete ? ' travel-complete' : ''}`}>
+            <h3><Mark name={TAB_ICONS[tab]} />{row.title}</h3>
+            <Fields fields={row.fields} />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState(null);
   const items = data.sections[tab] ?? [];
@@ -224,6 +242,10 @@ function TripDetail({ data, tab, onSelectTab }) {
   const search = query.trim().toLowerCase();
   const rows = items.filter(item =>
     (category === null || categoryOf(item) === category) && item.title.toLowerCase().includes(search));
+  const groups = tab === 'checklist' ? [
+    { title: '일반 체크리스트', rows: rows.filter(item => categoryOf(item) !== '쇼핑') },
+    { title: '쇼핑 리스트', rows: rows.filter(item => categoryOf(item) === '쇼핑') },
+  ] : [];
 
   const selectTab = nextTab => {
     if (nextTab === tab) return;
@@ -250,7 +272,9 @@ function TripDetail({ data, tab, onSelectTab }) {
             </button>
           ))}
         </nav>
-        {tab === 'overview' ? <Overview data={data} onSelectTab={selectTab} /> : (
+        {tab === 'overview' && <Overview data={data} onSelectTab={selectTab} />}
+        {tab === 'today' && <TodayDashboard data={data} selectedDate={selectedDate} onDateChange={onDateChange} now={now} />}
+        {tab !== 'overview' && tab !== 'today' && (
           <section className="travel-section" aria-label={TABS[tab]}>
             <header className="travel-section-heading">
               <div><h2>{TABS[tab]}</h2><p>{items.length}개 항목</p></div>
@@ -270,19 +294,14 @@ function TripDetail({ data, tab, onSelectTab }) {
               <Mark name="search" /><input type="search" aria-label="제목 검색" placeholder="제목 검색" value={query} onChange={event => setQuery(event.target.value)} />
             </label>
             {rows.length === 0 && <p className="travel-empty">{search ? '검색 결과가 없습니다.' : '등록된 항목이 없습니다.'}</p>}
-            {tab === 'schedule' ? <Timeline rows={rows} /> : (
-              <ul className="travel-card-grid travel-reader-list">
-                {rows.map(row => {
-                  const complete = tab === 'checklist' && row.fields.상태 === '완료';
-                  return (
-                    <li key={row.id} className={`travel-reader-card${complete ? ' travel-complete' : ''}`}>
-                      <h3><Mark name={TAB_ICONS[tab]} />{row.title}</h3>
-                      <Fields fields={row.fields} />
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            {tab === 'schedule' && <Timeline rows={rows} />}
+            {tab === 'checklist' && groups.filter(group => group.rows.length > 0).map(group => (
+              <section key={group.title} aria-label={group.title} className="travel-checklist-group">
+                <h3>{group.title}</h3>
+                <RecordList rows={group.rows} tab={tab} />
+              </section>
+            ))}
+            {tab !== 'schedule' && tab !== 'checklist' && <RecordList rows={rows} tab={tab} />}
           </section>
         )}
       </div>
@@ -351,13 +370,44 @@ function readRoute() {
   const trip = params.get('trip');
   const tripId = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(trip) ? trip : null;
   const tab = params.get('tab');
-  return { tripId, tab: tripId && Object.hasOwn(TABS, tab) ? tab : 'overview' };
+  const date = params.get('date');
+  return { tripId, tab: tripId && Object.hasOwn(TABS, tab) ? tab : 'overview',
+    selectedDate: tripId && date === datePart(date) ? date : null };
+}
+
+function TodayHome({ trips, now, navigate }) {
+  const { active, next, unknownZone } = chooseTrips(trips, now);
+  return (
+    <section className="travel-reader-card travel-today-home" aria-labelledby="travel-home-today">
+      <h2 id="travel-home-today">오늘 일정</h2>
+      {active.length === 0 ? (
+        <p>{unknownZone ? '시간대를 확인해야 하는 여행이 있습니다.' : '오늘 진행 중인 여행이 없습니다.'}</p>
+      ) : (
+        <p>{active.length === 1 ? `${active[0].title} 여행이 진행 중입니다.` : '진행 중인 여행 중 오늘 일정을 볼 여행을 선택하세요.'}</p>
+      )}
+      <div className="travel-today-actions">
+        {active.map(trip => (
+          <button className="travel-secondary" type="button" key={trip.id} onClick={() => navigate(trip.id, 'today')}>
+            {active.length === 1 ? '오늘 일정 보기' : trip.title}
+          </button>
+        ))}
+        {active.length === 0 && next && (
+          <>
+            <button className="travel-secondary" type="button" onClick={() => navigate(next.id, 'overview')}>다음 여행 · {next.title}</button>
+            <button className="travel-secondary" type="button" onClick={() => navigate(next.id, 'checklist')}>준비 체크리스트</button>
+          </>
+        )}
+      </div>
+    </section>
+  );
 }
 
 export default function NotionTravel() {
-  const [{ tripId, tab }, setRoute] = useState(readRoute);
+  const [{ tripId, tab, selectedDate }, setRoute] = useState(readRoute);
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState(null);
+  const [now, setNow] = useState(Date.now);
+  const [lastRead, setLastRead] = useState(null);
   const key = `${tripId ?? 'list'}:${revision}`;
   const current = result?.key === key ? result : null;
 
@@ -367,6 +417,7 @@ export default function NotionTravel() {
     readTrips(tripId, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       setResult({ key, ...value });
+      if (value.data) setLastRead({ tripId, time: Date.now() });
       if (tripId && value.data) {
         expiryTimer = setTimeout(() => setResult({ key, needsPin: true }),
           value.data.expiresAt * 1000 - Date.now());
@@ -381,19 +432,30 @@ export default function NotionTravel() {
   }, [key, tripId]);
 
   useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     const onHistory = () => setRoute(readRoute());
     window.addEventListener('popstate', onHistory);
     return () => window.removeEventListener('popstate', onHistory);
   }, []);
 
-  const navigate = (nextTrip, nextTab = 'overview', replace = false) => {
+  const navigate = (nextTrip, nextTab = 'overview', replace = false, date = null) => {
     const url = new URL(window.location.href);
-    url.hash = nextTrip ? new URLSearchParams({ trip: nextTrip, tab: nextTab }).toString() : '';
+    const params = new URLSearchParams();
+    if (nextTrip) {
+      params.set('trip', nextTrip);
+      params.set('tab', nextTab);
+      if (date) params.set('date', date);
+    }
+    url.hash = params.toString();
     if (url.href !== window.location.href) {
       if (replace) window.history.replaceState(null, '', url);
       else window.history.pushState(null, '', url);
     }
-    setRoute({ tripId: nextTrip, tab: nextTab });
+    setRoute({ tripId: nextTrip, tab: nextTab, selectedDate: date });
   };
 
   const refresh = () => setRevision(value => value + 1);
@@ -418,7 +480,11 @@ export default function NotionTravel() {
         {tripId && <button className="travel-back" onClick={() => navigate(null)}><Mark name="chevronLeft" />여행 목록</button>}
         {!current && <p className="travel-empty" role="status">여행 정보를 불러오는 중입니다.</p>}
         {current?.error && (
-          <div className="travel-empty" role="alert"><p>{current.error}</p><button className="travel-secondary" onClick={refresh}>다시 시도</button></div>
+          <div className="travel-empty" role="alert">
+            <p>{current.error}</p>
+            {lastRead?.tripId === tripId && <p>마지막 성공 조회 {new Date(lastRead.time).toLocaleTimeString('ko-KR')}</p>}
+            <button className="travel-secondary" onClick={refresh}>다시 시도</button>
+          </div>
         )}
         {current?.needsPin && <PinForm key={tripId} tripId={tripId} onUnlock={refresh} />}
         {current?.data?.trips && (
@@ -431,6 +497,7 @@ export default function NotionTravel() {
               </div>
               <span className="travel-list-count">여행 {current.data.trips.length}개</span>
             </div>
+            <TodayHome trips={current.data.trips} now={now} navigate={navigate} />
             {current.data.trips.length === 0 && <p className="travel-empty">등록된 여행이 없습니다.</p>}
             <ul className="travel-card-grid travel-reader-list">
               {current.data.trips.map(trip => <TripCard key={trip.id} trip={trip} onSelect={navigate} />)}
@@ -438,7 +505,9 @@ export default function NotionTravel() {
           </section>
         )}
         {current?.data?.trip && (
-          <TripDetail key={tripId} data={current.data} tab={tab} onSelectTab={next => navigate(tripId, next, true)} />
+          <TripDetail key={tripId} data={current.data} tab={tab} selectedDate={selectedDate} now={now}
+            onSelectTab={next => navigate(tripId, next, true, selectedDate)}
+            onDateChange={date => navigate(tripId, 'today', true, date)} />
         )}
       </main>
     </div>
