@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../icons.jsx';
 import { chooseTrips, datePart } from '../todaySchedule.js';
 import TodayDashboard from './TodayDashboard.jsx';
+import StatusChips from './StatusChips.jsx';
 import './NotionTravel.css';
 
 const TABS = {
@@ -27,6 +28,13 @@ const FILTER_FIELDS = {
 };
 const WON_FIELDS = new Set(['총예산', '총지출', '잔여예산', '예산 KRW', '사용금액', '잔액', '원화 확정액', '집계 금액']);
 const DATE_FIELDS = new Set(['여행기간', '일시', '이용일', '결제일', '구매예정일', '기한']);
+const STATUS_FIELDS = {
+  bookings: ['예약상태', '결제상태'],
+  expenses: ['정산여부'],
+  receipts: ['처리상태'],
+  checklist: ['상태'],
+  shopping: ['상태'],
+};
 const LATIN_TITLE = /^(?=.*\p{Script=Latin})[\p{Script=Latin}\p{M}\p{N}\p{P}\p{Z}]+$/u;
 const ERRORS = {
   trip_pin_not_configured: '이 여행의 비밀번호가 아직 설정되지 않았습니다.',
@@ -62,6 +70,10 @@ async function readTrips(tripId, signal) {
   return { data };
 }
 
+function settlementLabel(value) {
+  return typeof value === 'boolean' ? (value ? '정산 완료' : '미정산') : value;
+}
+
 function Fields({ fields }) {
   return (
     <dl className="travel-reader-fields">
@@ -70,7 +82,7 @@ function Fields({ fields }) {
           <dt>{name}</dt>
           <dd className={typeof value === 'number' || DATE_FIELDS.has(name) ? 'travel-number' : undefined}>{typeof value === 'number'
             ? `${WON_FIELDS.has(name) ? '₩' : ''}${value.toLocaleString('ko-KR')}${name === '현지 금액' && fields.통화 ? ` ${fields.통화}` : ''}`
-            : typeof value === 'boolean' ? (value ? '정산 완료' : '미정산') : value || '—'}</dd>
+            : settlementLabel(value) || '—'}</dd>
         </div>
       ))}
     </dl>
@@ -109,12 +121,14 @@ function TripCard({ trip, onSelect }) {
       <article className="travel-trip-card">
         <Cover trip={trip} />
         <div className="travel-trip-copy">
-          {trip.fields.상태 && <span className="travel-badge">{trip.fields.상태}</span>}
-          <h3>
-            <button type="button" lang={LATIN_TITLE.test(trip.title) ? 'en' : undefined} onClick={() => onSelect(trip.id)}>
-              {trip.title}
-            </button>
-          </h3>
+          <div className="travel-item-heading">
+            <h3>
+              <button type="button" lang={LATIN_TITLE.test(trip.title) ? 'en' : undefined} onClick={() => onSelect(trip.id)}>
+                {trip.title}
+              </button>
+            </h3>
+            <StatusChips statuses={{ 상태: trip.fields.상태 }} />
+          </div>
           <TripFacts fields={trip.fields} />
           <span className="travel-card-link">여행 상세 <Mark name="arrowRight" /></span>
         </div>
@@ -159,7 +173,16 @@ function Overview({ data, onSelectTab }) {
           <h3>예약 요약</h3>
           <p>{sections.bookings.length ? `${sections.bookings.length}건의 예약` : '등록된 예약이 없습니다.'}</p>
           {sections.bookings.length > 0 && (
-            <ul className="travel-summary-list">{sections.bookings.slice(0, 3).map(item => <li key={item.id}>{item.title}</li>)}</ul>
+            <ul className="travel-summary-list">
+              {sections.bookings.slice(0, 3).map(item => (
+                <li key={item.id}>
+                  <span className="travel-item-heading">
+                    <span>{item.title}</span>
+                    <StatusChips statuses={{ 예약상태: item.fields.예약상태 }} />
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
           <button className="travel-link-button" onClick={() => onSelectTab('bookings')}>예약 보기 <Mark name="arrowRight" /></button>
         </article>
@@ -200,7 +223,10 @@ function Timeline({ rows }) {
                   {time && <span className="travel-event-time">{time}</span>}
                   {구분 && <span className="travel-badge">{구분}</span>}
                 </div>
-                <h4>{row.title}</h4>
+                <div className="travel-item-heading">
+                  <h4>{row.title}</h4>
+                  <StatusChips statuses={{ 진행상태: row.fields.진행상태 }} />
+                </div>
                 {장소 && <p className="travel-event-location"><Mark name="pin" />{장소}</p>}
                 {Object.values(details).some(Boolean) && (
                   <details><summary>일정 정보</summary><Fields fields={details} /></details>
@@ -215,13 +241,18 @@ function Timeline({ rows }) {
 }
 
 function RecordList({ rows, tab }) {
+  const statusFields = STATUS_FIELDS[tab] ?? [];
   return (
     <ul className="travel-card-grid travel-reader-list">
       {rows.map(row => {
         const complete = (tab === 'checklist' || tab === 'shopping') && row.fields.상태 === '완료';
+        const statuses = Object.fromEntries(statusFields.map(field => [field, settlementLabel(row.fields[field])]));
         return (
           <li key={row.id} className={`travel-reader-card${complete ? ' travel-complete' : ''}`}>
-            <h3><Mark name={TAB_ICONS[tab]} />{row.title}</h3>
+            <div className="travel-item-heading">
+              <h3><Mark name={TAB_ICONS[tab]} /><span>{row.title}</span></h3>
+              <StatusChips statuses={statuses} />
+            </div>
             <Fields fields={row.fields} />
           </li>
         );
@@ -256,8 +287,10 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now })
       <header className="travel-hero">
         <Cover trip={data.trip} />
         <div className="travel-hero-copy">
-          {data.trip.fields.상태 && <span className="travel-badge">{data.trip.fields.상태}</span>}
-          <h1 lang={LATIN_TITLE.test(data.trip.title) ? 'en' : undefined}>{data.trip.title}</h1>
+          <div className="travel-item-heading">
+            <h1 lang={LATIN_TITLE.test(data.trip.title) ? 'en' : undefined}>{data.trip.title}</h1>
+            <StatusChips statuses={{ 상태: data.trip.fields.상태 }} />
+          </div>
           <TripFacts fields={data.trip.fields} />
         </div>
       </header>

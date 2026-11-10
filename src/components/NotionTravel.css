@@ -116,6 +116,17 @@ body { margin: 0; font-size: 14px; }
   font-size: 13px;
   font-weight: 600;
 }
+.travel-item-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.travel-item-heading > :first-child { min-width: 0; }
+.travel-status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: none;
+  max-width: 45%;
+  text-align: end;
+}
 .travel-card-grid, .travel-kpis {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

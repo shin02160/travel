@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../icons.jsx';
 import { planDay, shiftDate, tripCalendar } from '../todaySchedule.js';
+import StatusChips from './StatusChips.jsx';
 
 const EVENT_ICONS = { 이동: 'train', 관광: 'map', 식사: 'compass', 쇼핑: 'wallet', 공연: 'music', 숙박: 'hotel', 휴식: 'home' };
 const dateLabel = new Intl.DateTimeFormat('ko-KR', {
@@ -38,7 +39,10 @@ function EventDetails({ row, end, bookings }) {
               <ul className="travel-summary-list">
                 {related.map(booking => (
                   <li key={booking.id}>
-                    {booking.title}{booking.fields.예약상태 && ` · ${booking.fields.예약상태}`}
+                    <span className="travel-item-heading">
+                      <span>{booking.title}</span>
+                      <StatusChips statuses={{ 예약상태: booking.fields.예약상태 }} />
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -85,7 +89,10 @@ export default function TodayDashboard({ data, selectedDate, onDateChange, now }
           {isToday && next ? (
             <>
               <p className="travel-event-time">{next.time}</p>
-              <h4>{next.row.title}</h4>
+              <div className="travel-item-heading">
+                <h4>{next.row.title}</h4>
+                <StatusChips statuses={{ 진행상태: next.row.fields.진행상태 }} />
+              </div>
               {next.row.fields.장소 && <p>{next.row.fields.장소}</p>}
             </>
           ) : <p>{isToday ? '시작 시간이 확인된 다음 일정이 없습니다.' : '현지 오늘 날짜를 선택하면 다음 일정을 볼 수 있습니다.'}</p>}
@@ -104,12 +111,14 @@ export default function TodayDashboard({ data, selectedDate, onDateChange, now }
                       <div className="travel-event-meta">
                         <span className="travel-event-time">{allDay ? '종일' : time ?? '시간 미정'}</span>
                         {구분 && <span className="travel-badge">{구분}</span>}
-                        {진행상태 && <span className="travel-badge">{진행상태}</span>}
                         {passed && <span className="travel-badge">예정 시간 지남</span>}
                         {time && stamp === null && <span className="travel-badge">시간대 확인 필요</span>}
                         {eventEnd?.slice(0, 10) > day && <span className="travel-badge">{eventEnd.slice(0, 10)} 종료</span>}
                       </div>
-                      <h4>{row.title}</h4>
+                      <div className="travel-item-heading">
+                        <h4>{row.title}</h4>
+                        <StatusChips statuses={{ 진행상태 }} />
+                      </div>
                       {장소 && <p className="travel-event-location">{장소}</p>}
                       <EventDetails row={row} end={eventEnd} bookings={bookings} />
                     </article>
