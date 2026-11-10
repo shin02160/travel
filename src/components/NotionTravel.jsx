@@ -1,11 +1,21 @@
 import { useEffect, useState } from 'react';
-import '../styles.css';
+import { Icon } from '../icons.jsx';
 import './NotionTravel.css';
 
 const TABS = {
   overview: '개요', schedule: '일정', bookings: '예약', budgets: '예산',
   expenses: '지출', receipts: '영수증', checklist: '체크리스트',
 };
+const TAB_ICONS = {
+  overview: 'compass', schedule: 'calendar', bookings: 'plane', budgets: 'wallet',
+  expenses: 'currency', receipts: 'fileText', checklist: 'check',
+};
+const COVERS = {
+  '4136d8c5-8de1-81ce-a4c8-dbda8e993076': 'destination-shanghai.jpg',
+  '4136d8c5-8de1-81f4-a070-e07878964af0': 'destination-guangzhou.jpg',
+};
+const SCHEDULE_ICONS = { 이동: 'train', 관광: 'map', 식사: 'compass', 쇼핑: 'wallet', 공연: 'music', 숙박: 'hotel', 휴식: 'home' };
+const BUDGET_FIELDS = ['총예산', '총지출', '잔여예산'];
 const FILTER_FIELDS = { bookings: '예약유형', checklist: '분류' };
 const WON_FIELDS = new Set(['총예산', '총지출', '잔여예산', '예산 KRW', '사용금액', '잔액', '원화 확정액', '집계 금액']);
 const ERRORS = {
@@ -49,7 +59,7 @@ function Fields({ fields }) {
         <div key={name}>
           <dt>{name}</dt>
           <dd>{typeof value === 'number'
-            ? `${WON_FIELDS.has(name) ? '₩' : ''}${value.toLocaleString('ko-KR')}`
+            ? `${WON_FIELDS.has(name) ? '₩' : ''}${value.toLocaleString('ko-KR')}${name === '현지 금액' && fields.통화 ? ` ${fields.통화}` : ''}`
             : value || '—'}</dd>
         </div>
       ))}
@@ -57,8 +67,140 @@ function Fields({ fields }) {
   );
 }
 
-function TripDetail({ data }) {
-  const [tab, setTab] = useState('overview');
+function Mark({ name, size = 18 }) {
+  return <span className="travel-icon" aria-hidden="true"><Icon name={name} size={size} /></span>;
+}
+
+function Cover({ trip, className = '' }) {
+  const file = COVERS[trip.id];
+  return (
+    <div className={`travel-cover ${className}`} aria-hidden="true">
+      <Mark name="map" size={44} />
+      {file && (
+        <img src={`${import.meta.env.BASE_URL}${file}`} alt="" width="1200" height="600"
+          loading="lazy" decoding="async" onError={event => { event.currentTarget.hidden = true; }} />
+      )}
+    </div>
+  );
+}
+
+function TripFacts({ fields }) {
+  return (
+    <div className="travel-facts">
+      {fields.여행지 && <span><Mark name="pin" />{fields.여행지}</span>}
+      {fields.여행기간 && <span><Mark name="calendar" />{fields.여행기간}</span>}
+    </div>
+  );
+}
+
+function TripCard({ trip, onSelect }) {
+  return (
+    <li>
+      <article className="travel-trip-card">
+        <Cover trip={trip} />
+        <div className="travel-trip-copy">
+          {trip.fields.상태 && <span className="travel-badge">{trip.fields.상태}</span>}
+          <h3><button type="button" onClick={() => onSelect(trip.id)}>{trip.title}</button></h3>
+          <TripFacts fields={trip.fields} />
+          <span className="travel-card-link">여행 상세 <Mark name="arrowRight" /></span>
+        </div>
+      </article>
+    </li>
+  );
+}
+
+function ChecklistProgress({ items }) {
+  const complete = items.filter(item => item.fields.상태 === '완료').length;
+  return (
+    <div className="travel-progress">
+      {items.length ? (
+        <>
+          <p><strong>{complete}</strong> / {items.length} 완료</p>
+          <progress aria-label="체크리스트 진행률" max={items.length} value={complete} />
+        </>
+      ) : <p>등록된 항목이 없습니다.</p>}
+    </div>
+  );
+}
+
+function Overview({ data, onSelectTab }) {
+  const { trip, sections } = data;
+  const { 메모, ...fields } = trip.fields;
+  return (
+    <section aria-label="개요">
+      <div className="travel-kpis" aria-label="예산 요약">
+        {BUDGET_FIELDS.map(label => (
+          <div className="travel-reader-card" key={label}>
+            <span>{label}</span>
+            <strong>{typeof fields[label] === 'number' ? `₩${fields[label].toLocaleString('ko-KR')}` : '—'}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="travel-card-grid">
+        <article className="travel-reader-card">
+          <h3>여행 정보</h3>
+          <Fields fields={{ 여행지: fields.여행지, 여행기간: fields.여행기간, 상태: fields.상태, 메모 }} />
+        </article>
+        <article className="travel-reader-card">
+          <h3>예약 요약</h3>
+          <p>{sections.bookings.length ? `${sections.bookings.length}건의 예약` : '등록된 예약이 없습니다.'}</p>
+          {sections.bookings.length > 0 && (
+            <ul className="travel-summary-list">{sections.bookings.slice(0, 3).map(item => <li key={item.id}>{item.title}</li>)}</ul>
+          )}
+          <button className="travel-link-button" onClick={() => onSelectTab('bookings')}>예약 보기 <Mark name="arrowRight" /></button>
+        </article>
+        <article className="travel-reader-card">
+          <h3>체크리스트</h3>
+          <ChecklistProgress items={sections.checklist} />
+          <button className="travel-link-button" onClick={() => onSelectTab('checklist')}>체크리스트 보기 <Mark name="arrowRight" /></button>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function Timeline({ rows }) {
+  const days = new Map();
+  for (const row of rows) {
+    const date = row.fields.일시?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? '';
+    const day = days.get(date) ?? [];
+    day.push(row);
+    days.set(date, day);
+  }
+  return [...days].sort(([a], [b]) => (a || '9999').localeCompare(b || '9999')).map(([date, day]) => (
+    <section className="travel-day" key={date} aria-label={date || '날짜 미정'}>
+      <h3><Mark name="calendar" />{date || '날짜 미정'}</h3>
+      <ol className="travel-timeline">
+        {day.toSorted((a, b) => {
+          const time = item => item.fields.일시?.match(/T(\d{2}:\d{2})/)?.[1] ?? '99:99';
+          return time(a).localeCompare(time(b));
+        }).map(row => {
+          const { 일시, 구분, 장소, ...more } = row.fields;
+          const time = 일시?.match(/T(\d{2}:\d{2})/)?.[1];
+          const details = { 일시, ...more };
+          return (
+            <li key={row.id}>
+              <span className="travel-timeline-icon"><Mark name={SCHEDULE_ICONS[구분] ?? 'calendar'} /></span>
+              <article className="travel-reader-card">
+                <div className="travel-event-meta">
+                  {time && <span className="travel-event-time">{time}</span>}
+                  {구분 && <span className="travel-badge">{구분}</span>}
+                </div>
+                <h4>{row.title}</h4>
+                {장소 && <p className="travel-event-location"><Mark name="pin" />{장소}</p>}
+                {Object.values(details).some(Boolean) && (
+                  <details><summary>일정 정보</summary><Fields fields={details} /></details>
+                )}
+              </article>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  ));
+}
+
+function TripDetail({ data, tab, onSelectTab }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState(null);
   const items = data.sections[tab] ?? [];
@@ -74,51 +216,65 @@ function TripDetail({ data }) {
 
   const selectTab = nextTab => {
     if (nextTab === tab) return;
-    setTab(nextTab);
     setQuery('');
     setCategory(null);
+    onSelectTab(nextTab);
   };
 
   return (
     <>
-      <div className="travel-reader-card">
-        <h2>{data.trip.title}</h2>
+      <header className="travel-hero">
+        <Cover trip={data.trip} />
+        <div className="travel-hero-copy">
+          {data.trip.fields.상태 && <span className="travel-badge">{data.trip.fields.상태}</span>}
+          <h1>{data.trip.title}</h1>
+          <TripFacts fields={data.trip.fields} />
+        </div>
+      </header>
+      <div className="travel-detail-layout">
+        <nav aria-label="여행 정보" className="travel-reader-tabs">
+          {Object.entries(TABS).map(([key, label]) => (
+            <button key={key} type="button" aria-pressed={tab === key} onClick={() => selectTab(key)}>
+              <Mark name={TAB_ICONS[key]} />{label}
+            </button>
+          ))}
+        </nav>
+        {tab === 'overview' ? <Overview data={data} onSelectTab={selectTab} /> : (
+          <section className="travel-section" aria-label={TABS[tab]}>
+            <header className="travel-section-heading">
+              <div><h2>{TABS[tab]}</h2><p>{items.length}개 항목</p></div>
+              {tab === 'checklist' && <ChecklistProgress items={items} />}
+            </header>
+            {categories.length > 0 && (
+              <div role="group" aria-label={`${filterField} 필터`} className="travel-reader-chips">
+                <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)}>전체</button>
+                {categories.map(option => (
+                  <button key={option} type="button" aria-pressed={category === option} onClick={() => setCategory(option)}>
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
+            <label className="travel-reader-filter">
+              <Mark name="search" /><input type="search" aria-label="제목 검색" placeholder="제목 검색" value={query} onChange={event => setQuery(event.target.value)} />
+            </label>
+            {rows.length === 0 && <p className="travel-empty">{search ? '검색 결과가 없습니다.' : '등록된 항목이 없습니다.'}</p>}
+            {tab === 'schedule' ? <Timeline rows={rows} /> : (
+              <ul className="travel-card-grid travel-reader-list">
+                {rows.map(row => {
+                  const complete = tab === 'checklist' && row.fields.상태 === '완료';
+                  return (
+                    <li key={row.id} className={`travel-reader-card${complete ? ' travel-complete' : ''}`}>
+                      <h3><Mark name={TAB_ICONS[tab]} />{row.title}</h3>
+                      <Fields fields={row.fields} />
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
       </div>
-      <nav aria-label="여행 정보" className="travel-reader-tabs">
-        {Object.entries(TABS).map(([key, label]) => (
-          <button key={key} aria-pressed={tab === key} onClick={() => selectTab(key)}>
-            {label}
-          </button>
-        ))}
-      </nav>
-      {tab === 'overview' ? (
-        <section className="travel-reader-card" aria-label="개요"><Fields fields={data.trip.fields} /></section>
-      ) : (
-        <section aria-label={TABS[tab]}>
-          {categories.length > 0 && (
-            <div role="group" aria-label={`${TABS[tab]} ${filterField} 필터`} className="travel-reader-chips">
-              <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)}>전체</button>
-              {categories.map(option => (
-                <button key={option} type="button" aria-pressed={category === option} onClick={() => setCategory(option)}>
-                  {option}
-                </button>
-              ))}
-            </div>
-          )}
-          <label className="travel-reader-filter">
-            제목 검색 <input type="search" value={query} onChange={event => setQuery(event.target.value)} />
-          </label>
-          {rows.length === 0 && <p>{query.trim() ? '검색 결과가 없습니다.' : '등록된 항목이 없습니다.'}</p>}
-          <ul className="travel-reader-list">
-            {rows.map(row => (
-              <li key={row.id} className="travel-reader-card">
-                <h3>{row.title}</h3>
-                <Fields fields={row.fields} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
     </>
   );
 }
@@ -126,6 +282,7 @@ function TripDetail({ data }) {
 function PinForm({ tripId, onUnlock }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [showPin, setShowPin] = useState(false);
 
   const submit = async event => {
     event.preventDefault();
@@ -154,18 +311,40 @@ function PinForm({ tripId, onUnlock }) {
   };
 
   return (
-    <section className="travel-reader-card">
-      {error && <p role="alert">{error}</p>}
-      <form onSubmit={submit}>
-        <label>여행 비밀번호 <input type="password" name="pin" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} required /></label>
-        <button type="submit" disabled={busy}>여행 열기</button>
+    <section className="travel-reader-card travel-pin" aria-labelledby="travel-pin-title">
+      <span className="travel-pin-icon"><Mark name="lock" size={24} /></span>
+      <h1 id="travel-pin-title">여행 잠금 해제</h1>
+      <p>이 여행에 설정된 숫자 4자리를 입력하세요.</p>
+      <form onSubmit={submit} aria-busy={busy}>
+        <label htmlFor="travel-pin">여행 비밀번호</label>
+        <div className="travel-pin-entry">
+          <input id="travel-pin" type={showPin ? 'text' : 'password'} name="pin" inputMode="numeric"
+            pattern="[0-9]{4}" maxLength={4} autoComplete="off" required
+            aria-invalid={error ? true : undefined} aria-describedby={error ? 'travel-pin-error' : undefined} />
+          <button type="button" onClick={() => setShowPin(value => !value)}
+            aria-label={showPin ? '비밀번호 숨기기' : '비밀번호 보기'}>
+            <Mark name={showPin ? 'eyeOff' : 'eye'} size={20} />
+          </button>
+        </div>
+        {error && <p id="travel-pin-error" className="travel-error-text" role="alert">{error}</p>}
+        <button type="submit" className="travel-primary" disabled={busy}>
+          {busy ? '확인 중…' : '여행 열기'} <Mark name="arrowRight" />
+        </button>
       </form>
     </section>
   );
 }
 
+function readRoute() {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const trip = params.get('trip');
+  const tripId = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(trip) ? trip : null;
+  const tab = params.get('tab');
+  return { tripId, tab: tripId && Object.hasOwn(TABS, tab) ? tab : 'overview' };
+}
+
 export default function NotionTravel() {
-  const [tripId, setTripId] = useState(null);
+  const [{ tripId, tab }, setRoute] = useState(readRoute);
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState(null);
   const key = `${tripId ?? 'list'}:${revision}`;
@@ -190,36 +369,67 @@ export default function NotionTravel() {
     };
   }, [key, tripId]);
 
+  useEffect(() => {
+    const onHistory = () => setRoute(readRoute());
+    window.addEventListener('popstate', onHistory);
+    return () => window.removeEventListener('popstate', onHistory);
+  }, []);
+
+  const navigate = (nextTrip, nextTab = 'overview', replace = false) => {
+    const url = new URL(window.location.href);
+    url.hash = nextTrip ? new URLSearchParams({ trip: nextTrip, tab: nextTab }).toString() : '';
+    if (url.href !== window.location.href) {
+      if (replace) window.history.replaceState(null, '', url);
+      else window.history.pushState(null, '', url);
+    }
+    setRoute({ tripId: nextTrip, tab: nextTab });
+  };
+
   const refresh = () => setRevision(value => value + 1);
   return (
-    <main className="travel-reader">
+    <div className="travel-reader">
+      <a className="travel-skip" href="#travel-content" onClick={event => {
+        event.preventDefault();
+        document.getElementById('travel-content').focus();
+      }}>본문으로 이동</a>
       <header className="travel-reader-header">
-        <div>
-          <h1>My Travel Hub</h1>
-          <p>여행 정보는 Notion에서 편집합니다.</p>
+        <div className="travel-bar">
+          <button className="travel-brand" onClick={() => navigate(null)} aria-label="My Travel Hub 여행 목록">
+            <span className="travel-brand-icon"><Mark name="compass" size={23} /></span>
+            <span>My Travel Hub</span>
+          </button>
+          {current?.data && (
+            <button className="travel-secondary" onClick={refresh}><Mark name="sync" />새로고침</button>
+          )}
         </div>
       </header>
-      {tripId && <button onClick={() => setTripId(null)}>여행 목록</button>}
-      {current?.data && <button onClick={refresh}>새로고침</button>}
-      {!current && <p role="status">여행 정보를 불러오는 중입니다.</p>}
-      {current?.error && (
-        <div role="alert"><p>{current.error}</p><button onClick={refresh}>다시 시도</button></div>
-      )}
-      {current?.needsPin && <PinForm key={tripId} tripId={tripId} onUnlock={refresh} />}
-      {current?.data?.trips && (
-        <section aria-label="여행 목록">
-          {current.data.trips.length === 0 && <p>등록된 여행이 없습니다.</p>}
-          <ul className="travel-reader-list">
-            {current.data.trips.map(trip => (
-              <li key={trip.id} className="travel-reader-card">
-                <h2><button onClick={() => setTripId(trip.id)}>{trip.title}</button></h2>
-                <Fields fields={trip.fields} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {current?.data?.trip && <TripDetail key={tripId} data={current.data} />}
-    </main>
+      <main id="travel-content" className="travel-content" tabIndex={-1}>
+        {tripId && <button className="travel-back" onClick={() => navigate(null)}><Mark name="chevronLeft" />여행 목록</button>}
+        {!current && <p className="travel-empty" role="status">여행 정보를 불러오는 중입니다.</p>}
+        {current?.error && (
+          <div className="travel-empty" role="alert"><p>{current.error}</p><button className="travel-secondary" onClick={refresh}>다시 시도</button></div>
+        )}
+        {current?.needsPin && <PinForm key={tripId} tripId={tripId} onUnlock={refresh} />}
+        {current?.data?.trips && (
+          <section aria-labelledby="travel-list-title">
+            <div className="travel-list-heading">
+              <div>
+                <p className="travel-eyebrow">TRAVEL PLANNER</p>
+                <h1 id="travel-list-title">내 여행</h1>
+                <p>다가오는 여행과 지난 여정을 한곳에서 확인하세요.</p>
+              </div>
+              <span className="travel-list-count">여행 {current.data.trips.length}개</span>
+            </div>
+            {current.data.trips.length === 0 && <p className="travel-empty">등록된 여행이 없습니다.</p>}
+            <ul className="travel-card-grid travel-reader-list">
+              {current.data.trips.map(trip => <TripCard key={trip.id} trip={trip} onSelect={navigate} />)}
+            </ul>
+          </section>
+        )}
+        {current?.data?.trip && (
+          <TripDetail key={tripId} data={current.data} tab={tab} onSelectTab={next => navigate(tripId, next, true)} />
+        )}
+      </main>
+    </div>
   );
 }
