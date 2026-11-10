@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { sessionExpiry } from './auth-core.js';
+import { tripPinConfig, tripSessionExpiry, unlockTrip } from './trip-pin.js';
 
 const ID = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const SECTIONS = {
@@ -56,7 +56,6 @@ function project(page, [title, ...fields]) {
   return {
     id: page.id,
     title: propertyValue(page.properties[title]) || '제목 없음',
-    notionUrl: `https://www.notion.so/${page.id.replaceAll('-', '')}`,
     fields: Object.fromEntries(fields.map(name => [name, propertyValue(page.properties[name])])),
   };
 }
@@ -125,14 +124,7 @@ function notionReader(token, fetcher, signal) {
   return { query, readTrip: id => request(`/pages/${id}`) };
 }
 
-export async function handleTrips(req, res, env = process.env, fetcher = fetch) {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET');
-    return respond(res, 405, { error: 'method_not_allowed' });
-  }
-  const expiresAt = sessionExpiry(req, env);
-  if (!expiresAt) return respond(res, 401, { error: 'authentication_required' });
-
+export async function handleTrips(req, res, env = process.env, fetcher = fetch, { behindVercel = false } = {}) {
   const url = new URL(req.url, 'http://localhost');
   const ids = url.searchParams.getAll('tripId');
   const detailPath = url.pathname.match(/^\/api\/trips\/([^/]+)$/);
@@ -141,25 +133,39 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch) 
     return respond(res, 400, { error: 'invalid_trip_id' });
   }
 
+  const tripId = ids[0]?.toLowerCase();
+  const methods = tripId ? ['GET', 'POST'] : ['GET'];
+  if (!methods.includes(req.method)) {
+    res.setHeader('Allow', methods.join(', '));
+    return respond(res, 405, { error: 'method_not_allowed' });
+  }
+
+  const config = tripId ? tripPinConfig(tripId, env) : null;
+  if (req.method === 'POST') return unlockTrip(req, res, respond, tripId, config, env, fetcher, behindVercel);
+  const expiresAt = tripId ? tripSessionExpiry(req, tripId, config) : 0;
+  if (tripId && !config) return respond(res, 403, { error: 'trip_pin_not_configured' });
+  if (tripId && !expiresAt) return respond(res, 401, { error: 'trip_pin_required' });
+
   const token = env.NOTION_TRAVEL_TOKEN?.trim();
   const sources = Object.fromEntries(SOURCE_KEYS.map(key => [
     key, env[`NOTION_TRAVEL_${key.toUpperCase()}_SOURCE_ID`]?.trim().toLowerCase(),
   ]));
-  if (!token || SOURCE_KEYS.some(key => !ID.test(sources[key])) ||
-      new Set(Object.values(sources)).size !== SOURCE_KEYS.length) {
+  if (!token || !ID.test(sources.trips) || (tripId && (
+    SOURCE_KEYS.some(key => !ID.test(sources[key])) ||
+    new Set(Object.values(sources)).size !== SOURCE_KEYS.length
+  ))) {
     return respond(res, 503, { error: 'notion_not_configured' });
   }
 
   const sendData = body => expiresAt * 1000 > Date.now()
     ? respond(res, 200, { expiresAt, ...body })
-    : respond(res, 401, { error: 'authentication_required' });
+    : respond(res, 401, { error: 'trip_pin_required' });
 
   const reader = notionReader(token, fetcher, AbortSignal.timeout(15000));
-  const tripId = ids[0]?.toLowerCase();
   try {
     if (!tripId) {
       const trips = await reader.query(sources.trips);
-      return sendData({
+      return respond(res, 200, {
         trips: trips.map(page => project(page, TRIP_FIELDS.slice(0, 4))),
       });
     }

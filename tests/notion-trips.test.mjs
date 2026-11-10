@@ -1,21 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
-import { handleAuth } from '../server/auth-core.js';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { handleTrips } from '../server/notion-trips.js';
 
-const password = randomBytes(18).toString('base64url');
-const salt = randomBytes(16);
+const tripId = randomUUID();
+const otherTripId = randomUUID();
+const pin = '0427';
+const redisUrl = 'https://fixture.upstash.io/';
 const keys = ['trips', 'schedule', 'bookings', 'budgets', 'expenses', 'receipts', 'checklist'];
 const sources = Object.fromEntries(keys.map(key => [key, randomUUID()]));
 const env = {
-  ADMIN_PASSWORD_HASH: `${salt.toString('base64url')}:${scryptSync(password, salt, 64).toString('base64url')}`,
+  TRAVEL_DETAIL_PINS: JSON.stringify({ [tripId]: pin, [otherTripId]: pin }),
+  TRAVEL_REDIS_REST_URL: redisUrl,
+  TRAVEL_REDIS_REST_TOKEN: 'fixture-redis-token',
   SESSION_SECRET: randomBytes(48).toString('base64url'),
   NOTION_TRAVEL_TOKEN: 'fixture-notion-token',
   ...Object.fromEntries(keys.map(key => [`NOTION_TRAVEL_${key.toUpperCase()}_SOURCE_ID`, sources[key]])),
 };
-const tripId = randomUUID();
-const otherTripId = randomUUID();
 const relation = (...ids) => ({ type: 'relation', has_more: false, relation: ids.map(id => ({ id })) });
 const title = text => ({ type: 'title', title: [{ plain_text: text }] });
 const number = value => ({ type: 'number', number: value });
@@ -35,32 +36,89 @@ function response() {
   };
 }
 
-const auth = response();
-await handleAuth({
-  method: 'POST', body: { password },
-  headers: { host: 'localhost', origin: 'http://localhost', 'content-type': 'application/json' },
-}, auth, env);
-assert.equal(auth.statusCode, 200);
-const cookie = auth.headers['Set-Cookie'].split(';')[0];
+const pinHeaders = { host: 'localhost', origin: 'http://localhost', 'content-type': 'application/json' };
+const path = `/api/trips/${tripId}`;
+const allow = async () => Response.json({ result: 0 });
 
-async function read(path, fetcher, { method = 'GET', headers = { cookie }, config = env } = {}) {
+async function request(url, fetcher, { method = 'GET', headers = {}, config = env, body, behindVercel = false } = {}) {
   const res = response();
-  await handleTrips({ method, url: path, headers }, res, config, fetcher);
+  await handleTrips({ method, url, headers, body }, res, config, fetcher, { behindVercel });
   return res;
 }
 
-test('read endpoints require a valid P0 session and reject writes before reaching Notion', async () => {
-  const neverFetch = () => assert.fail('unexpected Notion request');
-  assert.equal((await read('/api/trips', neverFetch, { headers: {} })).statusCode, 401);
-  assert.equal((await read('/api/trips', neverFetch, { headers: { cookie: cookie + 'x' } })).statusCode, 401);
-  for (const method of ['POST', 'PATCH', 'PUT', 'DELETE']) {
-    const res = await read(`/api/trips/${tripId}`, neverFetch, { method });
+const unlock = (fetcher, entered = pin, extra = {}) => request(path, fetcher, {
+  method: 'POST', headers: pinHeaders, body: { pin: entered }, ...extra,
+});
+
+const auth = await unlock(allow);
+assert.equal(auth.statusCode, 200);
+const cookie = auth.headers['Set-Cookie'].split(';')[0];
+const expiresAt = Number(cookie.split('=')[1].split('.')[0]);
+const read = (url, fetcher) => request(url, fetcher, { headers: { cookie } });
+
+test('public list needs no session, while detail and mutations fail closed', async () => {
+  const neverFetch = () => assert.fail('unexpected upstream request');
+  assert.equal((await request('/api/trips', async () => list([]))).statusCode, 200);
+  assert.equal((await request(path, neverFetch)).statusCode, 401);
+  assert.equal((await request(path, neverFetch, { headers: { cookie: cookie + 'x' } })).statusCode, 401);
+  assert.equal((await read(`/api/trips/${otherTripId}`, neverFetch)).statusCode, 401);
+  assert.equal((await read(`/api/trips/${randomUUID()}`, neverFetch)).statusCode, 403);
+  assert.equal((await request(path, neverFetch, {
+    headers: { cookie }, config: { ...env, TRAVEL_DETAIL_PINS: JSON.stringify({ [tripId]: '2020' }) },
+  })).statusCode, 401);
+  for (const method of ['PATCH', 'PUT', 'DELETE']) {
+    const res = await request(path, neverFetch, { method });
     assert.equal(res.statusCode, 405);
-    assert.equal(res.headers.Allow, 'GET');
+    assert.equal(res.headers.Allow, 'GET, POST');
   }
+  assert.equal((await request('/api/trips', neverFetch, { method: 'POST' })).statusCode, 405);
   assert.equal((await read('/api/trips/not-a-uuid', neverFetch)).statusCode, 400);
   assert.equal((await read(`/api/trips?tripId=${tripId}&tripId=${otherTripId}`, neverFetch)).statusCode, 400);
-  assert.equal((await read('/api/trips', neverFetch, { config: { ...env, NOTION_TRAVEL_TOKEN: '' } })).statusCode, 503);
+  assert.equal((await request('/api/trips', neverFetch, { config: { ...env, NOTION_TRAVEL_TOKEN: '' } })).statusCode, 503);
+});
+
+test('unlock uses atomic Redis quota, rejects invalid PINs and fails closed during Redis errors', async () => {
+  const neverFetch = () => assert.fail('unexpected upstream request');
+  assert.equal((await unlock(neverFetch, 427)).statusCode, 400);
+  assert.equal((await unlock(neverFetch, '0427\n')).statusCode, 400);
+  assert.equal((await unlock(neverFetch, pin, { headers: { ...pinHeaders, origin: 'http://evil.example' } })).statusCode, 403);
+  assert.equal((await unlock(async () => new Response(null, { status: 503 }))).statusCode, 503);
+  assert.equal((await unlock(async () => Response.json({ result: -1 }))).statusCode, 503);
+  let calls = 0;
+  const redis = async (url, init) => {
+    assert.equal(url, redisUrl);
+    assert.equal(init.headers.Authorization, 'Bearer fixture-redis-token');
+    const [command, script, keys, key, limit, window] = JSON.parse(init.body);
+    assert.equal(command, 'EVAL');
+    assert.match(script, /redis.call\('INCR'/);
+    assert.deepEqual([keys, key, limit, window], [1, `travel:pin:local:${tripId}`, 10, 3600]);
+    return Response.json({ result: ++calls === 1 ? 0 : 1800 });
+  };
+  assert.equal((await unlock(redis, '7654')).statusCode, 401);
+  const blocked = await unlock(redis);
+  assert.equal(blocked.statusCode, 429);
+  assert.equal(blocked.headers['Retry-After'], '1800');
+  assert.equal(blocked.headers['Set-Cookie'], undefined);
+});
+
+test('accepts the standard Upstash token variable when the app-specific key is absent', async () => {
+  const config = { ...env, TRAVEL_REDIS_REST_TOKEN: undefined, UPSTASH_REDIS_REST_TOKEN: 'standard-token' };
+  const result = await unlock(async (_url, init) => {
+    assert.equal(init.headers.Authorization, 'Bearer standard-token');
+    return Response.json({ result: 0 });
+  }, pin, { config });
+  assert.equal(result.statusCode, 200);
+});
+
+test('PIN cookie is short-lived, HttpOnly, scoped to its trip and Secure on Vercel', async t => {
+  const result = await unlock(allow, pin, {
+    headers: { ...pinHeaders, origin: 'https://localhost' }, behindVercel: true,
+  });
+  assert.equal(result.statusCode, 200);
+  assert.match(result.headers['Set-Cookie'], /HttpOnly; SameSite=Strict; Secure; Max-Age=1800/);
+  assert.ok(result.headers['Set-Cookie'].includes(`Path=${path};`));
+  t.mock.method(Date, 'now', () => expiresAt * 1000);
+  assert.equal((await read(path, () => assert.fail('expired PIN cookie reached upstream'))).statusCode, 401);
 });
 
 test('trip list follows Notion cursors, deduplicates rows and returns safe summaries', async () => {
@@ -79,7 +137,8 @@ test('trip list follows Notion cursors, deduplicates rows and returns safe summa
   assert.equal(calls, 2);
   assert.equal(res.statusCode, 200);
   assert.equal(res.headers['Cache-Control'], 'private, no-store');
-  assert.equal(res.body.expiresAt, auth.body.expiresAt);
+  assert.equal(res.body.expiresAt, undefined);
+  assert.equal(res.body.trips[0].notionUrl, undefined);
   assert.deepEqual(res.body.trips.map(item => item.id), [tripId, otherTripId]);
   assert.equal(res.body.trips[1].fields.메모, undefined);
 });
@@ -114,6 +173,8 @@ test('detail verifies the parent data source and scopes all six sections to exac
   assert.equal(calls.length, 7);
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.trip.fields.총예산, 50000);
+  assert.equal(res.body.expiresAt, expiresAt);
+  assert.equal(res.body.trip.notionUrl, undefined);
   assert.deepEqual(Object.keys(res.body.sections), keys.slice(1));
   assert.deepEqual(res.body.sections.bookings.map(item => item.title), ['숙소']);
   assert.equal(res.body.sections.receipts[0].fields['관련 지출'], '교통비');

@@ -22,7 +22,6 @@
 .travel-reader button { cursor: pointer; margin: 0 4px 4px 0; }
 .travel-reader button:disabled { cursor: default; opacity: .6; }
 .travel-reader button[aria-pressed="true"] { background: var(--ink); color: white; }
-.travel-reader a { color: var(--ink); text-decoration: underline; }
 .travel-reader-list { padding: 0; list-style: none; }
 .travel-reader-card {
   margin: 12px 0;

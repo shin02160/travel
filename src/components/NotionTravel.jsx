@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { loginWithPassword, logoutSession } from '../authClient.js';
 import '../styles.css';
 import './NotionTravel.css';
 
@@ -9,22 +8,35 @@ const TABS = {
 };
 const WON_FIELDS = new Set(['총예산', '총지출', '잔여예산', '예산 KRW', '사용금액', '잔액', '원화 확정액', '집계 금액']);
 const ERRORS = {
+  trip_pin_not_configured: '이 여행의 비밀번호가 아직 설정되지 않았습니다.',
+  invalid_pin: '여행 비밀번호가 올바르지 않습니다.',
+  invalid_pin_format: '숫자 4자리를 입력해 주세요.',
+  too_many_pin_attempts: '비밀번호 입력 횟수를 초과했습니다. 잠시 후 다시 시도해 주세요.',
+  pin_limiter_unavailable: '비밀번호 확인 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.',
   notion_not_configured: 'Notion 연동을 사용하려면 서버 설정이 필요합니다.',
   trip_not_found: '이 여행은 Notion에서 조회할 수 없습니다.',
   notion_unavailable: 'Notion에서 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
 };
 
-async function readTrips(tripId, signal) {
-  const path = tripId ? `/api/trips/${encodeURIComponent(tripId)}` : '/api/trips';
-  const response = await fetch(path, { signal, credentials: 'same-origin', cache: 'no-store' });
-  if (response.status === 401) return { needsLogin: true };
+function tripPath(tripId) {
+  return tripId ? `/api/trips/${encodeURIComponent(tripId)}` : '/api/trips';
+}
+
+async function responseData(response) {
   if (!response.headers.get('content-type')?.startsWith('application/json')) {
     throw new Error('여행 조회 API에 연결할 수 없습니다.');
   }
   const data = await response.json();
   if (!response.ok) throw new Error(ERRORS[data.error] ?? '여행을 불러오지 못했습니다.');
-  if (!Number.isInteger(data.expiresAt) || data.expiresAt * 1000 <= Date.now()) {
-    return { needsLogin: true };
+  return data;
+}
+
+async function readTrips(tripId, signal) {
+  const response = await fetch(tripPath(tripId), { signal, credentials: 'same-origin', cache: 'no-store' });
+  if (tripId && response.status === 401) return { needsPin: true };
+  const data = await responseData(response);
+  if (tripId && (!Number.isInteger(data.expiresAt) || data.expiresAt * 1000 <= Date.now())) {
+    return { needsPin: true };
   }
   return { data };
 }
@@ -44,10 +56,6 @@ function Fields({ fields }) {
   );
 }
 
-function NotionLink({ row }) {
-  return <a href={row.notionUrl} target="_blank" rel="noopener noreferrer">Notion에서 열기</a>;
-}
-
 function TripDetail({ data }) {
   const [tab, setTab] = useState('overview');
   const [query, setQuery] = useState('');
@@ -58,7 +66,6 @@ function TripDetail({ data }) {
     <>
       <div className="travel-reader-card">
         <h2>{data.trip.title}</h2>
-        <NotionLink row={data.trip} />
       </div>
       <nav aria-label="여행 정보" className="travel-reader-tabs">
         {Object.entries(TABS).map(([key, label]) => (
@@ -80,7 +87,6 @@ function TripDetail({ data }) {
               <li key={row.id} className="travel-reader-card">
                 <h3>{row.title}</h3>
                 <Fields fields={row.fields} />
-                <NotionLink row={row} />
               </li>
             ))}
           </ul>
@@ -90,13 +96,51 @@ function TripDetail({ data }) {
   );
 }
 
+function PinForm({ tripId, onUnlock }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async event => {
+    event.preventDefault();
+    if (busy) return;
+    const form = event.currentTarget;
+    const pin = new FormData(form).get('pin');
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(tripPath(tripId), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await responseData(response);
+      if (data.unlocked !== true) throw new Error('여행 비밀번호를 확인할 수 없습니다.');
+      form.reset();
+      onUnlock();
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="travel-reader-card">
+      {error && <p role="alert">{error}</p>}
+      <form onSubmit={submit}>
+        <label>여행 비밀번호 <input type="password" name="pin" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} required /></label>
+        <button type="submit" disabled={busy}>여행 열기</button>
+      </form>
+    </section>
+  );
+}
+
 export default function NotionTravel() {
   const [tripId, setTripId] = useState(null);
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [authError, setAuthError] = useState('');
-  const [logoutFailed, setLogoutFailed] = useState(false);
   const key = `${tripId ?? 'list'}:${revision}`;
   const current = result?.key === key ? result : null;
 
@@ -106,8 +150,8 @@ export default function NotionTravel() {
     readTrips(tripId, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       setResult({ key, ...value });
-      if (value.data) {
-        expiryTimer = setTimeout(() => setResult({ key, needsLogin: true }),
+      if (tripId && value.data) {
+        expiryTimer = setTimeout(() => setResult({ key, needsPin: true }),
           value.data.expiresAt * 1000 - Date.now());
       }
     }).catch(error => {
@@ -120,41 +164,6 @@ export default function NotionTravel() {
   }, [key, tripId]);
 
   const refresh = () => setRevision(value => value + 1);
-  const login = async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const password = new FormData(form).get('password');
-    setBusy(true);
-    setAuthError('');
-    try {
-      if (await loginWithPassword(password)) {
-        form.reset();
-        refresh();
-      } else {
-        setAuthError('비밀번호가 올바르지 않습니다.');
-      }
-    } catch (error) {
-      setAuthError(error.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const logout = async () => {
-    setBusy(true);
-    setResult({ key, needsLogin: true });
-    setAuthError('');
-    try {
-      if (!await logoutSession()) throw new Error();
-      setLogoutFailed(false);
-    } catch {
-      setLogoutFailed(true);
-      setAuthError('로그아웃에 실패했습니다. 다시 시도해 주세요.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <main className="travel-reader">
       <header className="travel-reader-header">
@@ -162,27 +171,14 @@ export default function NotionTravel() {
           <h1>My Travel Hub</h1>
           <p>여행 정보는 Notion에서 편집합니다.</p>
         </div>
-        {current?.data && <button onClick={logout} disabled={busy}>로그아웃</button>}
       </header>
-      {tripId && <button onClick={() => setTripId(null)} disabled={busy || logoutFailed}>여행 목록</button>}
-      {current?.data && <button onClick={refresh} disabled={busy}>새로고침</button>}
+      {tripId && <button onClick={() => setTripId(null)}>여행 목록</button>}
+      {current?.data && <button onClick={refresh}>새로고침</button>}
       {!current && <p role="status">여행 정보를 불러오는 중입니다.</p>}
       {current?.error && (
         <div role="alert"><p>{current.error}</p><button onClick={refresh}>다시 시도</button></div>
       )}
-      {current?.needsLogin && (
-        <section className="travel-reader-card">
-          {authError && <p role="alert">{authError}</p>}
-          {logoutFailed ? (
-            <button onClick={logout} disabled={busy}>로그아웃 다시 시도</button>
-          ) : (
-            <form onSubmit={login}>
-              <label>관리자 비밀번호 <input type="password" name="password" autoComplete="current-password" required maxLength={256} /></label>
-              <button type="submit" disabled={busy}>로그인</button>
-            </form>
-          )}
-        </section>
-      )}
+      {current?.needsPin && <PinForm key={tripId} tripId={tripId} onUnlock={refresh} />}
       {current?.data?.trips && (
         <section aria-label="여행 목록">
           {current.data.trips.length === 0 && <p>등록된 여행이 없습니다.</p>}
