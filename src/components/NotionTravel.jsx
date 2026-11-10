@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Icon } from '../icons.jsx';
 import { chooseTrips, datePart, tripCalendar } from '../todaySchedule.js';
 import { calculateExpenseStatistics, expenseCategory } from '../expenseStatistics.js';
+import { compareBookingUseDate, sortByDisplayOrder } from '../displayOrder.js';
 import ExpenseStatistics from './ExpenseStatistics.jsx';
 import TodayDashboard from './TodayDashboard.jsx';
 import StatusChips from './StatusChips.jsx';
@@ -46,6 +47,8 @@ const ERRORS = {
   pin_limiter_unavailable: '비밀번호 확인 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.',
   notion_not_configured: 'Notion 연동을 사용하려면 서버 설정이 필요합니다.',
   trip_not_found: '이 여행은 Notion에서 조회할 수 없습니다.',
+  item_not_found: '이 항목은 현재 여행에서 조회할 수 없습니다.',
+  trip_pin_required: '여행 비밀번호를 다시 입력해 주세요.',
   notion_unavailable: 'Notion에서 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
 };
 
@@ -153,17 +156,6 @@ function ChecklistProgress({ items }) {
   );
 }
 
-function sortBookings(bookings) {
-  return bookings.toSorted((a, b) => {
-    const first = datePart(a.fields.이용일);
-    const second = datePart(b.fields.이용일);
-    if (first === second) return 0;
-    if (!first) return 1;
-    if (!second) return -1;
-    return first.localeCompare(second);
-  });
-}
-
 function OverviewBookings({ bookings, lodging = false }) {
   const title = lodging ? '숙소' : '항공편';
   return (
@@ -197,7 +189,7 @@ function OverviewBookings({ bookings, lodging = false }) {
 function Overview({ data, onSelectTab }) {
   const { trip, sections } = data;
   const { 메모, ...fields } = trip.fields;
-  const bookings = sortBookings(sections.bookings);
+  const bookings = sections.bookings.toSorted(compareBookingUseDate);
   const bookingPreview = bookings.slice(0, 3);
   return (
     <section aria-label="개요">
@@ -289,23 +281,97 @@ function Timeline({ rows }) {
   ));
 }
 
-function RecordList({ rows, tab }) {
+function ItemBlocks({ blocks }) {
+  return (
+    <div className="travel-item-blocks">
+      {blocks.map(({ id, type, text, checked, children }) => (
+        <div className={`travel-item-block travel-item-block--${type}`} key={id}>
+          {type.startsWith('heading_') ? <h4>{text}</h4> : (
+            <p>
+              {type === 'to_do' && <span className="travel-item-check" role="img"
+                aria-label={checked ? '완료' : '미완료'}>{checked ? '☑' : '☐'}</span>}
+              {text}
+            </p>
+          )}
+          {children.length > 0 && <ItemBlocks blocks={children} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChecklistItemBody({ tripId, itemId, section }) {
+  const [attempt, setAttempt] = useState(0);
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({ itemId, section });
+    fetch(`${tripPath(tripId)}?${params}`, {
+      signal: controller.signal, credentials: 'same-origin', cache: 'no-store',
+    }).then(responseData).then(data => {
+      if (!controller.signal.aborted) setResult({ data });
+    }).catch(error => {
+      if (!controller.signal.aborted) setResult({ error: error.message });
+    });
+    return () => controller.abort();
+  }, [tripId, itemId, section, attempt]);
+
+  if (!result) return <p role="status">세부 내용을 불러오는 중입니다.</p>;
+  if (result.error) return (
+    <>
+      <p className="travel-error-text" role="alert">{result.error}</p>
+      <button type="button" onClick={() => {
+        setResult(null);
+        setAttempt(value => value + 1);
+      }}>다시 시도</button>
+    </>
+  );
+
+  const { blocks, partial } = result.data;
+  return (
+    <>
+      {blocks.length > 0 && <ItemBlocks blocks={blocks} />}
+      {blocks.length === 0 && !partial && <p>등록된 세부 내용이 없습니다.</p>}
+      {partial && <p>일부 내용은 <a href={`https://www.notion.so/${itemId.replaceAll('-', '')}`}
+        target="_blank" rel="noopener noreferrer">Notion 원본</a>에서 확인할 수 있습니다.</p>}
+    </>
+  );
+}
+
+function RecordCard({ row, tab, tripId, statusFields }) {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  const expandable = tab === 'checklist' || tab === 'shopping';
+  const complete = expandable && row.fields.상태 === '완료';
+  const statuses = Object.fromEntries(statusFields.map(field => [field, settlementLabel(row.fields[field])]));
+
+  return (
+    <li className={`travel-reader-card${complete ? ' travel-complete' : ''}`}>
+      <div className="travel-item-heading">
+        <h3>
+          {expandable ? (
+            <button className="travel-item-toggle" type="button" aria-expanded={open} aria-controls={bodyId}
+              onClick={() => setOpen(value => !value)}>
+              <Mark name={TAB_ICONS[tab]} /><span>{row.title}</span><Mark name="chevronDown" size={16} />
+            </button>
+          ) : <><Mark name={TAB_ICONS[tab]} /><span>{row.title}</span></>}
+        </h3>
+        <StatusChips statuses={statuses} />
+      </div>
+      <Fields fields={row.fields} />
+      {expandable && <div id={bodyId} className="travel-item-body" hidden={!open}>
+        {open && <ChecklistItemBody tripId={tripId} itemId={row.id} section={tab} />}
+      </div>}
+    </li>
+  );
+}
+
+function RecordList({ rows, tab, tripId }) {
   const statusFields = STATUS_FIELDS[tab] ?? [];
   return (
     <ul className="travel-card-grid travel-reader-list">
-      {rows.map(row => {
-        const complete = (tab === 'checklist' || tab === 'shopping') && row.fields.상태 === '완료';
-        const statuses = Object.fromEntries(statusFields.map(field => [field, settlementLabel(row.fields[field])]));
-        return (
-          <li key={row.id} className={`travel-reader-card${complete ? ' travel-complete' : ''}`}>
-            <div className="travel-item-heading">
-              <h3><Mark name={TAB_ICONS[tab]} /><span>{row.title}</span></h3>
-              <StatusChips statuses={statuses} />
-            </div>
-            <Fields fields={row.fields} />
-          </li>
-        );
-      })}
+      {rows.map(row => <RecordCard key={row.id} row={row} tab={tab} tripId={tripId} statusFields={statusFields} />)}
     </ul>
   );
 }
@@ -356,7 +422,9 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
   const search = query.trim().toLowerCase();
   const filtered = historyItems.filter(item =>
     (category === null || categoryOf(item) === category) && item.title.toLowerCase().includes(search));
-  const rows = tab === 'bookings' ? sortBookings(filtered) : filtered;
+  let rows = filtered;
+  if (tab === 'bookings') rows = sortByDisplayOrder(filtered, compareBookingUseDate);
+  if (isExpenses) rows = sortByDisplayOrder(filtered);
   const selectTab = nextTab => {
     if (nextTab === tab) return;
     setQuery('');
@@ -435,7 +503,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
               {shoppingUnconfigured && <p className="travel-empty">쇼핑 리스트가 아직 연결되지 않았습니다.</p>}
               {!shoppingUnconfigured && rows.length === 0 && <p className="travel-empty">{search ? '검색 결과가 없습니다.' : '등록된 항목이 없습니다.'}</p>}
               {tab === 'schedule' && <Timeline rows={rows} />}
-              {!showStatistics && tab !== 'schedule' && rows.length > 0 && <RecordList rows={rows} tab={tab} />}
+              {!showStatistics && tab !== 'schedule' && rows.length > 0 && <RecordList rows={rows} tab={tab} tripId={data.trip.id} />}
             </div>
           </section>
         )}

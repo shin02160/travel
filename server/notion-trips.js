@@ -6,7 +6,7 @@ const SECTIONS = {
   schedule: ['일정명', '일시', '구분', '장소', '진행상태'],
   bookings: ['예약명', '예약유형', '예약상태', '이용일', '결제상태'],
   budgets: ['예산항목', '분류', '예산 KRW', '사용금액', '잔액'],
-  expenses: ['지출명', '분류', '결제일', '결제자', '정산여부', '통화', '현지 금액', '원화 확정액', '집계 금액'],
+  expenses: ['지출명', '분류', '결제일', '결제자', '결제수단', '정산여부', '통화', '현지 금액', '원화 확정액', '집계 금액'],
   receipts: ['영수증명', '처리상태'],
   checklist: ['할 일', '분류', '상태', '단계', '기한'],
   shopping: ['품목', '분류', '유형', '상태', '우선순위', '구매방법', '매장', '위치', '추천품목', '구매예정일', '단계', '기한', '메모'],
@@ -14,6 +14,10 @@ const SECTIONS = {
 const TRIP_FIELDS = ['여행명', '여행지', '여행기간', '상태', '메모', '총예산', '총지출', '잔여예산'];
 const REQUIRED_SOURCES = ['trips', ...Object.keys(SECTIONS).filter(key => key !== 'shopping')];
 const NOTION_API = 'https://api.notion.com/v1';
+const ITEM_BLOCK_TYPES = new Set([
+  'paragraph', 'heading_1', 'heading_2', 'heading_3', 'to_do', 'bulleted_list_item',
+  'numbered_list_item', 'toggle', 'quote', 'callout',
+]);
 
 class NotionError extends Error {
   constructor(status) {
@@ -150,7 +154,57 @@ function notionReader(token, fetcher, signal) {
     } while (cursor);
   }
 
-  return { query, readTrip: id => request(`/pages/${id}`) };
+  async function readItemBody(pageId) {
+    let remaining = 300;
+    let partial = false;
+
+    async function children(parentId, depth) {
+      const blocks = [];
+      const seen = new Set();
+      let cursor;
+      do {
+        if (depth > 4 || remaining === 0) {
+          partial = true;
+          break;
+        }
+        const params = new URLSearchParams({ page_size: String(Math.min(100, remaining)) });
+        if (cursor) params.set('start_cursor', cursor);
+        const result = await request(`/blocks/${parentId}/children?${params}`);
+        if (!Array.isArray(result.results) || typeof result.has_more !== 'boolean') throw new NotionError(502);
+        for (const block of result.results) {
+          if (remaining === 0) {
+            partial = true;
+            break;
+          }
+          remaining--;
+          if (block?.archived || block?.is_archived || block?.in_trash) continue;
+          if (!ID.test(block?.id) || !ITEM_BLOCK_TYPES.has(block.type)) {
+            partial = true;
+            continue;
+          }
+          const richText = block[block.type]?.rich_text;
+          const value = Array.isArray(richText) ? richText.map(part => part?.plain_text ?? '').join('') : '';
+          blocks.push({
+            id: block.id,
+            type: block.type,
+            text: value,
+            checked: block.type === 'to_do' && block.to_do?.checked === true,
+            children: block.has_children === true ? await children(block.id, depth + 1) : [],
+          });
+        }
+        if (!result.has_more) break;
+        cursor = result.next_cursor;
+        if (typeof cursor !== 'string' || !cursor || seen.has(cursor) || seen.size >= 20) throw new NotionError(502);
+        seen.add(cursor);
+      } while (cursor);
+      return blocks;
+    }
+
+    const blocks = await children(pageId, 0);
+    return { blocks, partial };
+  }
+
+  return { query, readPage: id => request(`/pages/${id}`), readItemBody };
 }
 
 export async function handleTrips(req, res, env = process.env, fetcher = fetch, { behindVercel = false } = {}) {
@@ -163,7 +217,15 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   }
 
   const tripId = ids[0]?.toLowerCase();
-  const methods = tripId ? ['GET', 'POST'] : ['GET'];
+  const itemIds = url.searchParams.getAll('itemId');
+  const itemSections = url.searchParams.getAll('section');
+  const itemRequest = itemIds.length > 0 || itemSections.length > 0;
+  const itemSection = itemSections[0];
+  if (itemRequest && (!tripId || itemIds.length !== 1 || !ID.test(itemIds[0]) ||
+      itemSections.length !== 1 || !['checklist', 'shopping'].includes(itemSection))) {
+    return respond(res, 400, { error: 'invalid_item_request' });
+  }
+  const methods = tripId && !itemRequest ? ['GET', 'POST'] : ['GET'];
   if (!methods.includes(req.method)) {
     res.setHeader('Allow', methods.join(', '));
     return respond(res, 405, { error: 'method_not_allowed' });
@@ -201,12 +263,26 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
       });
     }
 
-    const trip = await reader.readTrip(tripId).catch(error => {
+    const trip = await reader.readPage(tripId).catch(error => {
       if (error instanceof NotionError && error.status === 404) return null;
       throw error;
     });
     if (!belongsTo(trip, sources.trips) || trip.id !== tripId) {
       return respond(res, 404, { error: 'trip_not_found' });
+    }
+
+    if (itemRequest) {
+      const itemId = itemIds[0].toLowerCase();
+      const source = sources[itemSection];
+      if (!source) return respond(res, 404, { error: 'item_not_found' });
+      const item = await reader.readPage(itemId).catch(error => {
+        if (error instanceof NotionError && error.status === 404) return null;
+        throw error;
+      });
+      if (!belongsTo(item, source) || item.id !== itemId || !belongsToTrip(item, tripId)) {
+        return respond(res, 404, { error: 'item_not_found' });
+      }
+      return sendData(await reader.readItemBody(itemId));
     }
 
     const sections = {};
@@ -221,6 +297,10 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
       sections[key] = pages.map(page => {
         const row = project(page, fields);
         if (key === 'schedule') Object.assign(row, scheduleDetails(page));
+        if (key === 'bookings' || key === 'expenses') {
+          const order = page.properties['표시 순서'];
+          row.displayOrder = order?.type === 'number' && Number.isFinite(order.number) ? order.number : null;
+        }
         if (key === 'expenses') {
           row.posting = {
             status: propertyValue(page.properties.상태),

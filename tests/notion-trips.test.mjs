@@ -145,11 +145,13 @@ test('trip list follows Notion cursors, deduplicates rows and returns safe summa
 
 test('detail verifies each data source and scopes every section to exactly one trip', async () => {
   const expense = row('expenses', {
+    '표시 순서': number(20),
     지출명: title('교통비'), 여행: relation(tripId), '현지 금액': number(10),
     상태: { type: 'status', status: { name: '결제완료' } },
     유형: { type: 'select', select: { name: '지출' } },
     '적용 환율': number(200),
     결제자: { type: 'rich_text', rich_text: [{ plain_text: '테스트 결제자' }] },
+    결제수단: { type: 'select', select: { name: '카드' } },
     정산여부: { type: 'checkbox', checkbox: false },
   });
   const settledExpense = row('expenses', {
@@ -157,6 +159,7 @@ test('detail verifies each data source and scopes every section to exactly one t
   });
   const olderExpense = row('expenses', { 지출명: title('식비'), 여행: relation(tripId) });
   const visibleBooking = row('bookings', {
+    '표시 순서': number(0),
     예약명: title('숙소'), 여행: relation(tripId), 예약번호: title('private'),
     예약유형: { type: 'select', select: { name: '숙소' } },
     장소: title('宜致酒店'), '숙소 주소': title('中国广东省广州市天河区天河路198号6层前台'),
@@ -223,6 +226,8 @@ test('detail verifies each data source and scopes every section to exactly one t
   assert.equal(hotelBooking.address, '中国广东省广州市天河区天河路198号6层前台');
   assert.equal(flightBooking.location, '인천 T1 → 마카오');
   assert.equal(flightBooking.address, undefined);
+  assert.equal(hotelBooking.displayOrder, 0);
+  assert.equal(flightBooking.displayOrder, null);
   const [scheduled, otherEvent] = res.body.sections.schedule;
   assert.deepEqual(scheduled.bookingIds, [visibleBooking.id]);
   assert.equal(scheduled.date.start, '2026-12-05T14:00:00+08:00');
@@ -231,6 +236,8 @@ test('detail verifies each data source and scopes every section to exactly one t
   assert.match(scheduled.mapUrl, /^https:\/\/www\.google\.com\/maps\//);
   assert.equal(otherEvent.mapUrl, null);
   assert.equal(res.body.sections.expenses[0].fields.결제자, '테스트 결제자');
+  assert.deepEqual(res.body.sections.expenses.map(item => item.fields.결제수단), ['카드', null, null]);
+  assert.equal(res.body.sections.expenses[0].displayOrder, 20);
   assert.deepEqual(res.body.sections.expenses[0].posting, { status: '결제완료', type: '지출', rate: 200 });
   assert.deepEqual(res.body.sections.expenses.map(item => item.fields.정산여부), [false, true, null]);
   assert.equal(res.body.sections.receipts[0].fields['관련 지출'], '교통비');
@@ -263,6 +270,54 @@ test('missing shopping configuration leaves existing trip sections available', a
     headers: { cookie }, config: { ...env, NOTION_TRAVEL_SHOPPING_SOURCE_ID: sources.checklist },
   });
   assert.equal(duplicate.statusCode, 503);
+});
+
+test('item body requires the trip PIN and rejects items outside the exact travel and data source', async () => {
+  const itemId = randomUUID();
+  const endpoint = `${path}?section=checklist&itemId=${itemId}`;
+  const neverFetch = () => assert.fail('unexpected upstream request');
+  assert.equal((await request(endpoint, neverFetch)).statusCode, 401);
+  assert.equal((await request(endpoint, neverFetch, { method: 'POST' })).statusCode, 405);
+  assert.equal((await read(`${endpoint}&itemId=${itemId}`, neverFetch)).statusCode, 400);
+  for (const item of [
+    row('checklist', { 여행: relation(otherTripId) }, itemId),
+    row('checklist', { 여행: relation(tripId, otherTripId) }, itemId),
+    row('shopping', { 여행: relation(tripId) }, itemId),
+  ]) {
+    const result = await read(endpoint, async url => {
+      if (url.endsWith(`/pages/${tripId}`)) return Response.json(trip);
+      assert.ok(url.endsWith(`/pages/${itemId}`));
+      return Response.json(item);
+    });
+    assert.equal(result.statusCode, 404);
+  }
+});
+
+test('item body reads nested Notion checkboxes and paginates without exposing embedded pages', async () => {
+  const itemId = randomUUID();
+  const headingId = randomUUID();
+  const entry = row('shopping', { 여행: relation(tripId) }, itemId);
+  const block = (type, text, extra = {}) => ({
+    id: randomUUID(), type, [type]: { rich_text: [{ plain_text: text }], ...extra },
+  });
+  const result = await read(`${path}?section=shopping&itemId=${itemId}`, async value => {
+    const url = new URL(value);
+    if (url.pathname.endsWith(`/pages/${tripId}`)) return Response.json(trip);
+    if (url.pathname.endsWith(`/pages/${itemId}`)) return Response.json(entry);
+    if (url.pathname.endsWith(`/blocks/${headingId}/children`)) return list([block('to_do', '셀프 선반에서 수령', { checked: true })]);
+    assert.ok(url.pathname.endsWith(`/blocks/${itemId}/children`));
+    if (url.searchParams.get('start_cursor') === 'next') return list([block('paragraph', '호텔 안내')]);
+    return list([
+      { ...block('heading_2', '조건부 체크리스트'), id: headingId, has_children: true },
+      { ...block('child_page', '외부 페이지'), has_children: true },
+    ], 'next');
+  });
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.headers['Cache-Control'], 'private, no-store');
+  assert.equal(result.body.partial, true);
+  assert.deepEqual(result.body.blocks.map(item => item.text), ['조건부 체크리스트', '호텔 안내']);
+  assert.equal(result.body.blocks[0].children[0].checked, true);
+  assert.equal(result.body.blocks[0].children[0].text, '셀프 선반에서 수령');
 });
 
 test('429 honors Retry-After and upstream failures never look like empty data', async () => {

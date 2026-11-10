@@ -250,6 +250,27 @@ body { margin: 0; font-size: 14px; }
 .travel-reader-list h3, .travel-day h3, .travel-event-location { display: flex; gap: 8px; align-items: center; }
 .travel-reader-list h3 .travel-icon, .travel-day h3 .travel-icon { color: var(--primary); }
 .travel-complete { border-inline-start: 4px solid var(--primary); }
+.travel-reader .travel-item-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding-inline: 0;
+  border-color: transparent;
+  text-align: start;
+  font: inherit;
+}
+.travel-item-toggle[aria-expanded="true"] .travel-icon:last-child { transform: rotate(180deg); }
+.travel-item-body { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+.travel-item-blocks { display: grid; gap: 6px; counter-reset: item-body-list; }
+.travel-item-blocks .travel-item-blocks { margin: 6px 0 0 16px; }
+.travel-item-block { white-space: pre-wrap; }
+.travel-item-block p { color: var(--text-primary); }
+.travel-item-check { display: inline-block; margin-inline-end: 8px; color: var(--primary); }
+.travel-item-block--bulleted_list_item > p::before { content: "• "; }
+.travel-item-block--numbered_list_item { counter-increment: item-body-list; }
+.travel-item-block--numbered_list_item > p::before { content: counter(item-body-list) ". "; }
 .travel-progress p { margin-block: 5px; font-size: 13px; }
 .travel-progress progress { display: block; width: min(100%, 210px); min-width: 110px; height: 9px; accent-color: var(--primary); }
 .travel-day { margin-bottom: 22px; }
