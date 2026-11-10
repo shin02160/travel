@@ -3,6 +3,7 @@ import { Icon } from '../icons.jsx';
 import { chooseTrips, datePart, tripCalendar } from '../todaySchedule.js';
 import { calculateExpenseStatistics, expenseCategory } from '../expenseStatistics.js';
 import { compareBookingUseDate, sortByDisplayOrder } from '../displayOrder.js';
+import { readTripViewState, saveTripViewState } from '../tripViewState.js';
 import ExpenseStatistics from './ExpenseStatistics.jsx';
 import TodayDashboard from './TodayDashboard.jsx';
 import StatusChips from './StatusChips.jsx';
@@ -339,8 +340,7 @@ function ChecklistItemBody({ tripId, itemId, section }) {
   );
 }
 
-function RecordCard({ row, tab, tripId, statusFields }) {
-  const [open, setOpen] = useState(false);
+function RecordCard({ row, tab, tripId, statusFields, open, onToggle }) {
   const bodyId = useId();
   const expandable = tab === 'checklist' || tab === 'shopping';
   const complete = expandable && row.fields.상태 === '완료';
@@ -352,7 +352,7 @@ function RecordCard({ row, tab, tripId, statusFields }) {
         <h3>
           {expandable ? (
             <button className="travel-item-toggle" type="button" aria-expanded={open} aria-controls={bodyId}
-              onClick={() => setOpen(value => !value)}>
+              onClick={onToggle}>
               <Mark name={TAB_ICONS[tab]} /><span>{row.title}</span><Mark name="chevronDown" size={16} />
             </button>
           ) : <><Mark name={TAB_ICONS[tab]} /><span>{row.title}</span></>}
@@ -367,11 +367,12 @@ function RecordCard({ row, tab, tripId, statusFields }) {
   );
 }
 
-function RecordList({ rows, tab, tripId }) {
+function RecordList({ rows, tab, tripId, opened, onToggle }) {
   const statusFields = STATUS_FIELDS[tab] ?? [];
   return (
     <ul className="travel-card-grid travel-reader-list">
-      {rows.map(row => <RecordCard key={row.id} row={row} tab={tab} tripId={tripId} statusFields={statusFields} />)}
+      {rows.map(row => <RecordCard key={row.id} row={row} tab={tab} tripId={tripId} statusFields={statusFields}
+        open={opened.includes(`${tab}:${row.id}`)} onToggle={() => onToggle(`${tab}:${row.id}`)} />)}
     </ul>
   );
 }
@@ -401,11 +402,29 @@ function ExpenseTabs({ view, onChange }) {
 }
 
 function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, lastRead }) {
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState(null);
-  const [expenseView, setExpenseView] = useState('history');
-  const [expensePeriod, setExpensePeriod] = useState({ start: '', end: '' });
-  const [expenseDrilldown, setExpenseDrilldown] = useState(false);
+  const [view, setView] = useState(() => {
+    try {
+      return readTripViewState(data.trip.id, window.sessionStorage);
+    } catch {
+      return readTripViewState(data.trip.id);
+    }
+  });
+  const { expenseView, expensePeriod, expenseDrilldown, opened } = view;
+  const { query, category } = view.filters[tab];
+  useEffect(() => {
+    try {
+      saveTripViewState(data.trip.id, view, window.sessionStorage);
+    } catch {
+      // Continue with in-memory state when the browser blocks storage access.
+    }
+  }, [data.trip.id, view]);
+  const setFilter = change => setView(previous => ({
+    ...previous,
+    filters: { ...previous.filters, [tab]: { ...previous.filters[tab], ...change } },
+  }));
+  const toggleItem = id => setView(previous => ({
+    ...previous, opened: previous.opened.includes(id) ? previous.opened.filter(item => item !== id) : [...previous.opened, id],
+  }));
   const isExpenses = tab === 'expenses';
   const showStatistics = isExpenses && expenseView === 'statistics';
   const shoppingUnconfigured = tab === 'shopping' && !Array.isArray(data.sections.shopping);
@@ -427,16 +446,14 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
   if (isExpenses) rows = sortByDisplayOrder(filtered);
   const selectTab = nextTab => {
     if (nextTab === tab) return;
-    setQuery('');
-    setCategory(null);
-    setExpenseDrilldown(false);
     onSelectTab(nextTab);
   };
   const openExpenseHistory = (name = null) => {
-    setQuery('');
-    setCategory(name);
-    setExpenseDrilldown(name !== null);
-    setExpenseView('history');
+    setView(previous => ({
+      ...previous,
+      filters: { ...previous.filters, expenses: { query: '', category: name } },
+      expenseDrilldown: name !== null, expenseView: 'history',
+    }));
     document.getElementById('expense-tab-history').focus();
   };
 
@@ -468,11 +485,11 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
               <div><h2>{TABS[tab]}</h2>{!shoppingUnconfigured && !showStatistics && <p>{historyItems.length}개 항목</p>}</div>
               {tab === 'checklist' && <ChecklistProgress items={items} />}
             </header>
-            {isExpenses && <ExpenseTabs view={expenseView} onChange={setExpenseView} />}
+            {isExpenses && <ExpenseTabs view={expenseView} onChange={value => setView(previous => ({ ...previous, expenseView: value }))} />}
             {isExpenses && (
               <div id="expense-panel-statistics" role="tabpanel" aria-labelledby="expense-tab-statistics" hidden={!showStatistics} tabIndex={0}>
                 {showStatistics && <ExpenseStatistics trip={data.trip} stats={stats} period={expensePeriod}
-                  onPeriodChange={setExpensePeriod} onCategory={openExpenseHistory}
+                  onPeriodChange={value => setView(previous => ({ ...previous, expensePeriod: value }))} onCategory={openExpenseHistory}
                   onHistory={() => openExpenseHistory()} lastRead={lastRead} />}
               </div>
             )}
@@ -487,9 +504,9 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
               )}
               {categories.length > 0 && (
                 <div role="group" aria-label={`${filterField} 필터`} className="travel-reader-chips">
-                  <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)}>전체</button>
+                  <button type="button" aria-pressed={category === null} onClick={() => setFilter({ category: null })}>전체</button>
                   {categories.map(option => (
-                    <button key={option} type="button" aria-pressed={category === option} onClick={() => setCategory(option)}>
+                    <button key={option} type="button" aria-pressed={category === option} onClick={() => setFilter({ category: option })}>
                       {option}
                     </button>
                   ))}
@@ -497,13 +514,14 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
               )}
               {!shoppingUnconfigured && (
                 <label className="travel-reader-filter">
-                  <Mark name="search" /><input type="search" aria-label="제목 검색" placeholder="제목 검색" value={query} onChange={event => setQuery(event.target.value)} />
+                  <Mark name="search" /><input type="search" aria-label="제목 검색" placeholder="제목 검색" value={query} onChange={event => setFilter({ query: event.target.value })} />
                 </label>
               )}
               {shoppingUnconfigured && <p className="travel-empty">쇼핑 리스트가 아직 연결되지 않았습니다.</p>}
               {!shoppingUnconfigured && rows.length === 0 && <p className="travel-empty">{search ? '검색 결과가 없습니다.' : '등록된 항목이 없습니다.'}</p>}
               {tab === 'schedule' && <Timeline rows={rows} />}
-              {!showStatistics && tab !== 'schedule' && rows.length > 0 && <RecordList rows={rows} tab={tab} tripId={data.trip.id} />}
+              {!showStatistics && tab !== 'schedule' && rows.length > 0 && <RecordList rows={rows} tab={tab} tripId={data.trip.id}
+                opened={opened} onToggle={toggleItem} />}
             </div>
           </section>
         )}
