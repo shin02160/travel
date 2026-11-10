@@ -208,6 +208,16 @@ body { margin: 0; font-size: 14px; }
 .travel-reader-fields dt { color: var(--text-secondary); }
 .travel-reader-fields dd { margin: 0; white-space: pre-wrap; }
 .travel-summary-list { padding-inline-start: 20px; margin: 8px 0; }
+.travel-overview-bookings { margin-bottom: 14px; }
+.travel-overview-booking-heading { display: flex; align-items: center; gap: 8px; }
+.travel-overview-booking-heading .travel-icon { color: var(--primary); }
+.travel-overview-booking-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.travel-overview-booking-list li + li { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+.travel-reader .travel-flight-route { margin-top: 4px; white-space: pre-wrap; }
+.travel-lodging-address { margin: 8px 0 0; padding: 12px; border-radius: var(--radius-control); background: var(--primary-soft); }
+.travel-lodging-address dt { color: var(--text-secondary); }
+.travel-lodging-address dd { margin: 0; font-size: var(--section-title-size); font-weight: 600; white-space: pre-wrap; }
+.travel-lodging-address dd + dt { margin-top: 8px; }
 .travel-section, .travel-detail-layout > section { min-width: 0; }
 .travel-section-heading { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 10px; }
 .travel-section-heading p { font-size: 13px; }

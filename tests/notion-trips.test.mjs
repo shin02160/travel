@@ -153,7 +153,17 @@ test('detail verifies each data source and scopes every section to exactly one t
     지출명: title('숙박비'), 여행: relation(tripId), 정산여부: { type: 'checkbox', checkbox: true },
   });
   const olderExpense = row('expenses', { 지출명: title('식비'), 여행: relation(tripId) });
-  const visibleBooking = row('bookings', { 예약명: title('숙소'), 여행: relation(tripId), 예약번호: title('private') });
+  const visibleBooking = row('bookings', {
+    예약명: title('숙소'), 여행: relation(tripId), 예약번호: title('private'),
+    예약유형: { type: 'select', select: { name: '숙소' } },
+    장소: title('宜致酒店'), '숙소 주소': title('中国广东省广州市天河区天河路198号6层前台'),
+    '장소 주소': title('일반 장소 주소'),
+  });
+  const flight = row('bookings', {
+    예약명: title('항공편'), 여행: relation(tripId),
+    예약유형: { type: 'select', select: { name: '항공' } },
+    장소: title('인천 T1 → 마카오'), '장소 주소': title('private'),
+  });
   const event = row('schedule', {
     일정명: title('숙소 방문'), 여행: relation(tripId),
     일시: { type: 'date', date: { start: '2026-12-05T14:00:00+08:00', end: null, time_zone: null } },
@@ -173,7 +183,7 @@ test('detail verifies each data source and scopes every section to exactly one t
     '관련 지출': relation(expense.id),
   });
   const rows = {
-    bookings: [visibleBooking,
+    bookings: [visibleBooking, flight,
       row('bookings', { 예약명: title('other'), 여행: relation(otherTripId) }),
       row('bookings', { 예약명: title('mixed'), 여행: relation(tripId, otherTripId) }),
       row('bookings', { 예약명: title('orphan') }),
@@ -204,7 +214,12 @@ test('detail verifies each data source and scopes every section to exactly one t
   assert.equal(res.body.expiresAt, expiresAt);
   assert.equal(res.body.trip.notionUrl, undefined);
   assert.deepEqual(Object.keys(res.body.sections), keys.slice(1));
-  assert.deepEqual(res.body.sections.bookings.map(item => item.title), ['숙소']);
+  const [hotelBooking, flightBooking] = res.body.sections.bookings;
+  assert.deepEqual(res.body.sections.bookings.map(item => item.title), ['숙소', '항공편']);
+  assert.equal(hotelBooking.location, '宜致酒店');
+  assert.equal(hotelBooking.address, '中国广东省广州市天河区天河路198号6层前台');
+  assert.equal(flightBooking.location, '인천 T1 → 마카오');
+  assert.equal(flightBooking.address, undefined);
   const [scheduled, otherEvent] = res.body.sections.schedule;
   assert.deepEqual(scheduled.bookingIds, [visibleBooking.id]);
   assert.equal(scheduled.date.start, '2026-12-05T14:00:00+08:00');

@@ -221,6 +221,14 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
       sections[key] = pages.map(page => {
         const row = project(page, fields);
         if (key === 'schedule') Object.assign(row, scheduleDetails(page));
+        if (key === 'bookings') {
+          const type = row.fields.예약유형;
+          if (type === '항공' || type === '숙소') row.location = propertyValue(page.properties.장소);
+          if (type === '숙소') {
+            row.address = propertyValue(page.properties['숙소 주소'])?.trim() ||
+              propertyValue(page.properties['장소 주소'])?.trim() || null;
+          }
+        }
         if (expenses) {
           const related = page.properties['관련 지출'];
           row.fields['관련 지출'] = related?.type === 'relation' && Array.isArray(related.relation)

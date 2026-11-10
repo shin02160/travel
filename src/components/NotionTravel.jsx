@@ -162,12 +162,47 @@ function sortBookings(bookings) {
   });
 }
 
+function OverviewBookings({ bookings, lodging = false }) {
+  const title = lodging ? '숙소' : '항공편';
+  return (
+    <article className="travel-reader-card">
+      <h3 className="travel-overview-booking-heading"><Mark name={lodging ? 'hotel' : 'plane'} />{title}</h3>
+      {bookings.length === 0 ? <p>등록된 {title} 정보가 없습니다.</p> : (
+        <ul className="travel-overview-booking-list">
+          {bookings.map(booking => (
+            <li key={booking.id}>
+              <div className="travel-item-heading">
+                <h4>{booking.title}</h4>
+                <StatusChips statuses={{ 예약상태: booking.fields.예약상태 }} />
+              </div>
+              <Fields fields={{ 이용일: booking.fields.이용일 }} />
+              {lodging ? (
+                <dl className="travel-lodging-address">
+                  <dt>현지 상호명</dt>
+                  <dd>{booking.location?.trim() || '등록되지 않았습니다.'}</dd>
+                  <dt>현지 주소</dt>
+                  <dd>{booking.address || '등록되지 않았습니다.'}</dd>
+                </dl>
+              ) : booking.location && <p className="travel-flight-route">{booking.location}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  );
+}
+
 function Overview({ data, onSelectTab }) {
   const { trip, sections } = data;
   const { 메모, ...fields } = trip.fields;
-  const bookingPreview = sortBookings(sections.bookings).slice(0, 3);
+  const bookings = sortBookings(sections.bookings);
+  const bookingPreview = bookings.slice(0, 3);
   return (
     <section aria-label="개요">
+      <div className="travel-card-grid travel-overview-bookings">
+        <OverviewBookings bookings={bookings.filter(booking => booking.fields.예약유형 === '항공')} />
+        <OverviewBookings lodging bookings={bookings.filter(booking => booking.fields.예약유형 === '숙소')} />
+      </div>
       <div className="travel-kpis" aria-label="예산 요약">
         {BUDGET_FIELDS.map(label => (
           <div className="travel-reader-card" key={label}>
