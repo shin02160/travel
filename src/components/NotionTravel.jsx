@@ -6,6 +6,7 @@ const TABS = {
   overview: '개요', schedule: '일정', bookings: '예약', budgets: '예산',
   expenses: '지출', receipts: '영수증', checklist: '체크리스트',
 };
+const FILTER_FIELDS = { bookings: '예약유형', checklist: '분류' };
 const WON_FIELDS = new Set(['총예산', '총지출', '잔여예산', '예산 KRW', '사용금액', '잔액', '원화 확정액', '집계 금액']);
 const ERRORS = {
   trip_pin_not_configured: '이 여행의 비밀번호가 아직 설정되지 않았습니다.',
@@ -59,8 +60,24 @@ function Fields({ fields }) {
 function TripDetail({ data }) {
   const [tab, setTab] = useState('overview');
   const [query, setQuery] = useState('');
-  const rows = data.sections[tab]?.filter(row =>
-    row.title.toLowerCase().includes(query.trim().toLowerCase()));
+  const [category, setCategory] = useState(null);
+  const items = data.sections[tab] ?? [];
+  const filterField = FILTER_FIELDS[tab];
+  const categoryOf = item => {
+    const value = item.fields[filterField];
+    return typeof value === 'string' && value.trim() ? value.trim() : '미분류';
+  };
+  const categories = filterField ? [...new Set(items.map(categoryOf))] : [];
+  const search = query.trim().toLowerCase();
+  const rows = items.filter(item =>
+    (category === null || categoryOf(item) === category) && item.title.toLowerCase().includes(search));
+
+  const selectTab = nextTab => {
+    if (nextTab === tab) return;
+    setTab(nextTab);
+    setQuery('');
+    setCategory(null);
+  };
 
   return (
     <>
@@ -69,7 +86,7 @@ function TripDetail({ data }) {
       </div>
       <nav aria-label="여행 정보" className="travel-reader-tabs">
         {Object.entries(TABS).map(([key, label]) => (
-          <button key={key} aria-pressed={tab === key} onClick={() => { setTab(key); setQuery(''); }}>
+          <button key={key} aria-pressed={tab === key} onClick={() => selectTab(key)}>
             {label}
           </button>
         ))}
@@ -78,6 +95,16 @@ function TripDetail({ data }) {
         <section className="travel-reader-card" aria-label="개요"><Fields fields={data.trip.fields} /></section>
       ) : (
         <section aria-label={TABS[tab]}>
+          {categories.length > 0 && (
+            <div role="group" aria-label={`${TABS[tab]} ${filterField} 필터`} className="travel-reader-chips">
+              <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)}>전체</button>
+              {categories.map(option => (
+                <button key={option} type="button" aria-pressed={category === option} onClick={() => setCategory(option)}>
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
           <label className="travel-reader-filter">
             제목 검색 <input type="search" value={query} onChange={event => setQuery(event.target.value)} />
           </label>
