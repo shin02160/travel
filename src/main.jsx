@@ -1,6 +1,6 @@
 import { Component } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App.jsx'
+import NotionTravel from './components/NotionTravel.jsx'
 
 class ErrorBoundary extends Component {
   state = { error: null };
@@ -19,6 +19,6 @@ class ErrorBoundary extends Component {
 
 createRoot(document.getElementById('root')).render(
   <ErrorBoundary>
-    <App />
+    <NotionTravel />
   </ErrorBoundary>
 )
