@@ -6,12 +6,13 @@ const SECTIONS = {
   schedule: ['일정명', '일시', '구분', '장소', '진행상태'],
   bookings: ['예약명', '예약유형', '예약상태', '이용일', '결제상태'],
   budgets: ['예산항목', '분류', '예산 KRW', '사용금액', '잔액'],
-  expenses: ['지출명', '분류', '결제일', '결제자', '정산여부', '현지 금액', '통화', '원화 확정액', '집계 금액'],
+  expenses: ['지출명', '분류', '결제일', '결제자', '정산여부', '통화', '현지 금액', '원화 확정액', '집계 금액'],
   receipts: ['영수증명', '처리상태'],
   checklist: ['할 일', '분류', '상태', '단계', '기한'],
+  shopping: ['품목', '분류', '유형', '상태', '우선순위', '구매방법', '매장', '위치', '추천품목', '구매예정일', '단계', '기한', '메모'],
 };
 const TRIP_FIELDS = ['여행명', '여행지', '여행기간', '상태', '메모', '총예산', '총지출', '잔여예산'];
-const SOURCE_KEYS = ['trips', ...Object.keys(SECTIONS)];
+const REQUIRED_SOURCES = ['trips', ...Object.keys(SECTIONS).filter(key => key !== 'shopping')];
 const NOTION_API = 'https://api.notion.com/v1';
 
 class NotionError extends Error {
@@ -175,12 +176,14 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   if (tripId && !expiresAt) return respond(res, 401, { error: 'trip_pin_required' });
 
   const token = env.NOTION_TRAVEL_TOKEN?.trim();
-  const sources = Object.fromEntries(SOURCE_KEYS.map(key => [
+  const sourceKeys = env.NOTION_TRAVEL_SHOPPING_SOURCE_ID?.trim()
+    ? [...REQUIRED_SOURCES, 'shopping'] : REQUIRED_SOURCES;
+  const sources = Object.fromEntries(sourceKeys.map(key => [
     key, env[`NOTION_TRAVEL_${key.toUpperCase()}_SOURCE_ID`]?.trim().toLowerCase(),
   ]));
   if (!token || !ID.test(sources.trips) || (tripId && (
-    SOURCE_KEYS.some(key => !ID.test(sources[key])) ||
-    new Set(Object.values(sources)).size !== SOURCE_KEYS.length
+    sourceKeys.some(key => !ID.test(sources[key])) ||
+    new Set(Object.values(sources)).size !== sourceKeys.length
   ))) {
     return respond(res, 503, { error: 'notion_not_configured' });
   }
@@ -208,6 +211,10 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
 
     const sections = {};
     for (const [key, fields] of Object.entries(SECTIONS)) {
+      if (key === 'shopping' && !sources.shopping) {
+        sections.shopping = null;
+        continue;
+      }
       const pages = await reader.query(sources[key], tripId);
       const expenses = key === 'receipts' ? new Map(sections.expenses.map(row => [row.id, row.title])) : null;
       sections[key] = pages.map(page => {

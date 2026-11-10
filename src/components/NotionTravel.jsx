@@ -6,11 +6,11 @@ import './NotionTravel.css';
 
 const TABS = {
   overview: '개요', today: '오늘 일정', schedule: '일정', bookings: '예약', budgets: '예산',
-  expenses: '지출', receipts: '영수증', checklist: '체크리스트',
+  expenses: '지출', receipts: '영수증', checklist: '체크리스트', shopping: '쇼핑 리스트',
 };
 const TAB_ICONS = {
   overview: 'compass', today: 'calendar', schedule: 'calendar', bookings: 'plane', budgets: 'wallet',
-  expenses: 'currency', receipts: 'fileText', checklist: 'check',
+  expenses: 'currency', receipts: 'fileText', checklist: 'check', shopping: 'wallet',
 };
 const COVERS = {
   '4136d8c5-8de1-81ce-a4c8-dbda8e993076': 'destination-shanghai.jpg',
@@ -23,9 +23,10 @@ const FILTER_FIELDS = {
   budgets: '분류',
   expenses: '분류',
   checklist: '분류',
+  shopping: '분류',
 };
 const WON_FIELDS = new Set(['총예산', '총지출', '잔여예산', '예산 KRW', '사용금액', '잔액', '원화 확정액', '집계 금액']);
-const DATE_FIELDS = new Set(['여행기간', '일시', '이용일', '결제일', '기한']);
+const DATE_FIELDS = new Set(['여행기간', '일시', '이용일', '결제일', '구매예정일', '기한']);
 const LATIN_TITLE = /^(?=.*\p{Script=Latin})[\p{Script=Latin}\p{M}\p{N}\p{P}\p{Z}]+$/u;
 const ERRORS = {
   trip_pin_not_configured: '이 여행의 비밀번호가 아직 설정되지 않았습니다.',
@@ -217,7 +218,7 @@ function RecordList({ rows, tab }) {
   return (
     <ul className="travel-card-grid travel-reader-list">
       {rows.map(row => {
-        const complete = tab === 'checklist' && row.fields.상태 === '완료';
+        const complete = (tab === 'checklist' || tab === 'shopping') && row.fields.상태 === '완료';
         return (
           <li key={row.id} className={`travel-reader-card${complete ? ' travel-complete' : ''}`}>
             <h3><Mark name={TAB_ICONS[tab]} />{row.title}</h3>
@@ -232,6 +233,7 @@ function RecordList({ rows, tab }) {
 function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState(null);
+  const shoppingUnconfigured = tab === 'shopping' && !Array.isArray(data.sections.shopping);
   const items = data.sections[tab] ?? [];
   const filterField = FILTER_FIELDS[tab];
   const categoryOf = item => {
@@ -242,11 +244,6 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now })
   const search = query.trim().toLowerCase();
   const rows = items.filter(item =>
     (category === null || categoryOf(item) === category) && item.title.toLowerCase().includes(search));
-  const groups = tab === 'checklist' ? [
-    { title: '일반 체크리스트', rows: rows.filter(item => categoryOf(item) !== '쇼핑') },
-    { title: '쇼핑 리스트', rows: rows.filter(item => categoryOf(item) === '쇼핑') },
-  ] : [];
-
   const selectTab = nextTab => {
     if (nextTab === tab) return;
     setQuery('');
@@ -277,7 +274,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now })
         {tab !== 'overview' && tab !== 'today' && (
           <section className="travel-section" aria-label={TABS[tab]}>
             <header className="travel-section-heading">
-              <div><h2>{TABS[tab]}</h2><p>{items.length}개 항목</p></div>
+              <div><h2>{TABS[tab]}</h2>{!shoppingUnconfigured && <p>{items.length}개 항목</p>}</div>
               {tab === 'checklist' && <ChecklistProgress items={items} />}
             </header>
             {categories.length > 0 && (
@@ -290,18 +287,15 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now })
                 ))}
               </div>
             )}
-            <label className="travel-reader-filter">
-              <Mark name="search" /><input type="search" aria-label="제목 검색" placeholder="제목 검색" value={query} onChange={event => setQuery(event.target.value)} />
-            </label>
-            {rows.length === 0 && <p className="travel-empty">{search ? '검색 결과가 없습니다.' : '등록된 항목이 없습니다.'}</p>}
+            {!shoppingUnconfigured && (
+              <label className="travel-reader-filter">
+                <Mark name="search" /><input type="search" aria-label="제목 검색" placeholder="제목 검색" value={query} onChange={event => setQuery(event.target.value)} />
+              </label>
+            )}
+            {shoppingUnconfigured && <p className="travel-empty">쇼핑 리스트가 아직 연결되지 않았습니다.</p>}
+            {!shoppingUnconfigured && rows.length === 0 && <p className="travel-empty">{search ? '검색 결과가 없습니다.' : '등록된 항목이 없습니다.'}</p>}
             {tab === 'schedule' && <Timeline rows={rows} />}
-            {tab === 'checklist' && groups.filter(group => group.rows.length > 0).map(group => (
-              <section key={group.title} aria-label={group.title} className="travel-checklist-group">
-                <h3>{group.title}</h3>
-                <RecordList rows={group.rows} tab={tab} />
-              </section>
-            ))}
-            {tab !== 'schedule' && tab !== 'checklist' && <RecordList rows={rows} tab={tab} />}
+            {tab !== 'schedule' && rows.length > 0 && <RecordList rows={rows} tab={tab} />}
           </section>
         )}
       </div>

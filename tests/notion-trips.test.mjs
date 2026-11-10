@@ -7,7 +7,7 @@ const tripId = randomUUID();
 const otherTripId = randomUUID();
 const pin = '0427';
 const redisUrl = 'https://fixture.upstash.io/';
-const keys = ['trips', 'schedule', 'bookings', 'budgets', 'expenses', 'receipts', 'checklist'];
+const keys = ['trips', 'schedule', 'bookings', 'budgets', 'expenses', 'receipts', 'checklist', 'shopping'];
 const sources = Object.fromEntries(keys.map(key => [key, randomUUID()]));
 const env = {
   TRAVEL_DETAIL_PINS: JSON.stringify({ [tripId]: pin, [otherTripId]: pin }),
@@ -143,7 +143,7 @@ test('trip list follows Notion cursors, deduplicates rows and returns safe summa
   assert.equal(res.body.trips[1].fields.메모, undefined);
 });
 
-test('detail verifies the parent data source and scopes all six sections to exactly one trip', async () => {
+test('detail verifies each data source and scopes every section to exactly one trip', async () => {
   const expense = row('expenses', {
     지출명: title('교통비'), 여행: relation(tripId), '현지 금액': number(10),
     결제자: { type: 'rich_text', rich_text: [{ plain_text: '테스트 결제자' }] },
@@ -166,6 +166,12 @@ test('detail verifies the parent data source and scopes all six sections to exac
     '지도 URL': { type: 'url', url: 'https://maps.google.com.example.org/maps' } });
   const receipt = row('receipts', { 영수증명: title('교통 영수증'), 여행: relation(tripId),
     '관련 지출': relation(expense.id, randomUUID()), '증빙 이미지': title('private') });
+  const checklistItem = row('checklist', { '할 일': title('여권 확인'), 여행: relation(tripId) });
+  const shoppingItem = row('shopping', {
+    품목: title('기념품'), 여행: relation(tripId), 분류: { type: 'select', select: { name: '캐릭터·굿즈' } },
+    구매예정일: { type: 'date', date: { start: '2026-12-05' } },
+    '관련 지출': relation(expense.id),
+  });
   const rows = {
     bookings: [visibleBooking,
       row('bookings', { 예약명: title('other'), 여행: relation(otherTripId) }),
@@ -174,6 +180,8 @@ test('detail verifies the parent data source and scopes all six sections to exac
       row('bookings', { 예약명: title('truncated'), 여행: { ...relation(tripId), has_more: true } }),
       row('schedule', { 예약명: title('wrong source'), 여행: relation(tripId) })],
     schedule: [event, unsafeMap], expenses: [expense, settledExpense, olderExpense], receipts: [receipt],
+    checklist: [checklistItem, shoppingItem],
+    shopping: [shoppingItem, checklistItem, row('shopping', { 품목: title('다른 여행 물건'), 여행: relation(otherTripId) })],
   };
   const calls = [];
   const res = await read(`/api/trips/${tripId}`, async (url, init) => {
@@ -188,7 +196,7 @@ test('detail verifies the parent data source and scopes all six sections to exac
     assert.ok(key);
     return list(rows[key] ?? []);
   });
-  assert.equal(calls.length, 7);
+  assert.equal(calls.length, keys.length);
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.trip.fields.총예산, 50000);
   assert.equal(res.body.expiresAt, expiresAt);
@@ -205,10 +213,35 @@ test('detail verifies the parent data source and scopes all six sections to exac
   assert.equal(res.body.sections.expenses[0].fields.결제자, '테스트 결제자');
   assert.deepEqual(res.body.sections.expenses.map(item => item.fields.정산여부), [false, true, null]);
   assert.equal(res.body.sections.receipts[0].fields['관련 지출'], '교통비');
+  assert.deepEqual(res.body.sections.checklist.map(item => item.id), [checklistItem.id]);
+  assert.deepEqual(res.body.sections.shopping.map(item => item.id), [shoppingItem.id]);
+  assert.equal(res.body.sections.shopping[0].title, '기념품');
+  assert.equal(res.body.sections.shopping[0].fields.분류, '캐릭터·굿즈');
+  assert.equal(res.body.sections.shopping[0].fields.구매예정일, '2026-12-05');
+  assert.equal(res.body.sections.shopping[0].fields['관련 지출'], undefined);
   assert.doesNotMatch(JSON.stringify(res.body), /private|예약번호|증빙 이미지/);
 
   const foreign = await read(`/api/trips?tripId=${tripId}`, async () => Response.json(row('schedule', {}, tripId)));
   assert.equal(foreign.statusCode, 404);
+});
+
+test('missing shopping configuration leaves existing trip sections available', async () => {
+  const config = { ...env, NOTION_TRAVEL_SHOPPING_SOURCE_ID: '' };
+  const calls = [];
+  const res = await request(path, async url => {
+    calls.push(url);
+    return url.endsWith(`/pages/${tripId}`) ? Response.json(trip) : list([]);
+  }, { config, headers: { cookie } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, keys.length - 1);
+  assert.ok(calls.every(url => !url.includes(sources.shopping)));
+  assert.deepEqual(res.body.sections.checklist, []);
+  assert.equal(res.body.sections.shopping, null);
+
+  const duplicate = await request(path, () => assert.fail('duplicate data source reached upstream'), {
+    headers: { cookie }, config: { ...env, NOTION_TRAVEL_SHOPPING_SOURCE_ID: sources.checklist },
+  });
+  assert.equal(duplicate.statusCode, 503);
 });
 
 test('429 honors Retry-After and upstream failures never look like empty data', async () => {
