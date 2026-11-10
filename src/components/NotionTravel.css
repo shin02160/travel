@@ -208,6 +208,7 @@ body { margin: 0; font-size: 14px; }
 .travel-reader-fields dt { color: var(--text-secondary); }
 .travel-reader-fields dd { margin: 0; white-space: pre-wrap; }
 .travel-summary-list { padding-inline-start: 20px; margin: 8px 0; }
+.travel-summary-list > li + li { margin-block-start: 6px; }
 .travel-overview-bookings { margin-bottom: 14px; }
 .travel-overview-booking-heading { display: flex; align-items: center; gap: 8px; }
 .travel-overview-booking-heading .travel-icon { color: var(--primary); }
