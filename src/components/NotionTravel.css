@@ -1,0 +1,44 @@
+.travel-reader {
+  width: min(100% - 32px, 860px);
+  margin: 32px auto;
+  color: var(--ink);
+}
+.travel-reader-header, .travel-reader-tabs, .travel-reader form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.travel-reader-header { justify-content: space-between; margin-bottom: 20px; }
+.travel-reader h1, .travel-reader h2, .travel-reader h3 { margin: 0 0 8px; }
+.travel-reader button, .travel-reader input {
+  font: inherit;
+  padding: 8px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: white;
+  color: inherit;
+}
+.travel-reader button { cursor: pointer; margin: 0 4px 4px 0; }
+.travel-reader button:disabled { cursor: default; opacity: .6; }
+.travel-reader button[aria-pressed="true"] { background: var(--ink); color: white; }
+.travel-reader-list { padding: 0; list-style: none; }
+.travel-reader-card {
+  margin: 12px 0;
+  padding: 16px;
+  background: white;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+.travel-reader-fields { margin: 12px 0; }
+.travel-reader-fields div { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: 8px; }
+.travel-reader-fields dt { font-weight: 600; }
+.travel-reader-fields dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.travel-reader-filter { display: block; margin: 12px 0; }
+.travel-reader-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.travel-reader-chips button { border-radius: 999px; margin: 0; min-height: 36px; }

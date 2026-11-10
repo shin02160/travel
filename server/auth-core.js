@@ -36,7 +36,7 @@ function issueSession(secret, expiresAt) {
   return `v1.${payload}.${sign(payload, secret)}`;
 }
 
-export function verifySession(req, env = process.env) {
+function sessionExpiry(req, env = process.env) {
   if (!ready(env)) return false;
   const cookie = (req.headers?.cookie || '').split(';').map(x => x.trim())
     .find(x => x.startsWith(`${COOKIE_NAME}=`));
@@ -49,10 +49,14 @@ export function verifySession(req, env = process.env) {
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return false;
   try {
     const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-    return Number.isInteger(payload.exp) && payload.exp > Date.now() / 1000;
+    return Number.isInteger(payload.exp) && payload.exp > Date.now() / 1000 ? payload.exp : false;
   } catch {
     return false;
   }
+}
+
+export function verifySession(req, env = process.env) {
+  return Boolean(sessionExpiry(req, env));
 }
 
 async function verifyPassword(password, hashSetting) {
@@ -68,7 +72,7 @@ async function verifyPassword(password, hashSetting) {
   }
 }
 
-async function readBody(req) {
+export async function readBody(req) {
   if (req.body !== undefined) {
     const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
     if (Buffer.byteLength(raw) > MAX_BODY_BYTES) return null;
