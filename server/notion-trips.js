@@ -221,6 +221,13 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
       sections[key] = pages.map(page => {
         const row = project(page, fields);
         if (key === 'schedule') Object.assign(row, scheduleDetails(page));
+        if (key === 'expenses') {
+          row.posting = {
+            status: propertyValue(page.properties.상태),
+            type: propertyValue(page.properties.유형),
+            rate: propertyValue(page.properties['적용 환율']),
+          };
+        }
         if (key === 'bookings') {
           const type = row.fields.예약유형;
           if (type === '항공' || type === '숙소') row.location = propertyValue(page.properties.장소);

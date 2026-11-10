@@ -146,6 +146,9 @@ test('trip list follows Notion cursors, deduplicates rows and returns safe summa
 test('detail verifies each data source and scopes every section to exactly one trip', async () => {
   const expense = row('expenses', {
     지출명: title('교통비'), 여행: relation(tripId), '현지 금액': number(10),
+    상태: { type: 'status', status: { name: '결제완료' } },
+    유형: { type: 'select', select: { name: '지출' } },
+    '적용 환율': number(200),
     결제자: { type: 'rich_text', rich_text: [{ plain_text: '테스트 결제자' }] },
     정산여부: { type: 'checkbox', checkbox: false },
   });
@@ -228,6 +231,7 @@ test('detail verifies each data source and scopes every section to exactly one t
   assert.match(scheduled.mapUrl, /^https:\/\/www\.google\.com\/maps\//);
   assert.equal(otherEvent.mapUrl, null);
   assert.equal(res.body.sections.expenses[0].fields.결제자, '테스트 결제자');
+  assert.deepEqual(res.body.sections.expenses[0].posting, { status: '결제완료', type: '지출', rate: 200 });
   assert.deepEqual(res.body.sections.expenses.map(item => item.fields.정산여부), [false, true, null]);
   assert.equal(res.body.sections.receipts[0].fields['관련 지출'], '교통비');
   assert.deepEqual(res.body.sections.checklist.map(item => item.id), [checklistItem.id]);

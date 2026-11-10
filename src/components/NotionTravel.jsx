@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../icons.jsx';
-import { chooseTrips, datePart } from '../todaySchedule.js';
+import { chooseTrips, datePart, tripCalendar } from '../todaySchedule.js';
+import { calculateExpenseStatistics, expenseCategory } from '../expenseStatistics.js';
+import ExpenseStatistics from './ExpenseStatistics.jsx';
 import TodayDashboard from './TodayDashboard.jsx';
 import StatusChips from './StatusChips.jsx';
 import './NotionTravel.css';
@@ -308,26 +310,66 @@ function RecordList({ rows, tab }) {
   );
 }
 
-function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now }) {
+const EXPENSE_VIEWS = { history: '지출 내역', statistics: '통계' };
+
+function ExpenseTabs({ view, onChange }) {
+  return (
+    <div className="expense-stats-tabs" role="tablist" aria-label="지출 보기"
+      onKeyDown={event => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 'history' : event.key === 'End' ? 'statistics' :
+          view === 'history' ? 'statistics' : 'history';
+        onChange(next);
+        document.getElementById(`expense-tab-${next}`).focus();
+      }}>
+      {Object.entries(EXPENSE_VIEWS).map(([id, label]) => (
+        <button key={id} type="button" id={`expense-tab-${id}`} data-testid={`expense-subtab-${id}`}
+          role="tab" aria-controls={`expense-panel-${id}`} aria-selected={view === id}
+          tabIndex={view === id ? 0 : -1} onClick={() => onChange(id)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, lastRead }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState(null);
+  const [expenseView, setExpenseView] = useState('history');
+  const [expensePeriod, setExpensePeriod] = useState({ start: '', end: '' });
+  const [expenseDrilldown, setExpenseDrilldown] = useState(false);
+  const isExpenses = tab === 'expenses';
+  const showStatistics = isExpenses && expenseView === 'statistics';
   const shoppingUnconfigured = tab === 'shopping' && !Array.isArray(data.sections.shopping);
   const items = data.sections[tab] ?? [];
+  const budget = data.trip.fields.총예산;
+  const budgetValue = budget === 0 && !data.sections.budgets.length ? null : budget;
+  const stats = isExpenses && (showStatistics || expenseDrilldown)
+    ? calculateExpenseStatistics(items, budgetValue, { ...expensePeriod, zone: tripCalendar(data.trip, now).zone })
+    : null;
+  const historyItems = isExpenses && expenseDrilldown ? items.filter(item => stats.includedIds.has(item.id)) : items;
   const filterField = FILTER_FIELDS[tab];
-  const categoryOf = item => {
-    const value = item.fields[filterField];
-    return typeof value === 'string' && value.trim() ? value.trim() : '미분류';
-  };
-  const categories = filterField ? [...new Set(items.map(categoryOf))] : [];
+  const categoryOf = item => expenseCategory(item.fields[filterField]);
+  const categories = filterField ? [...new Set(historyItems.map(categoryOf))] : [];
   const search = query.trim().toLowerCase();
-  const filtered = items.filter(item =>
+  const filtered = historyItems.filter(item =>
     (category === null || categoryOf(item) === category) && item.title.toLowerCase().includes(search));
   const rows = tab === 'bookings' ? sortBookings(filtered) : filtered;
   const selectTab = nextTab => {
     if (nextTab === tab) return;
     setQuery('');
     setCategory(null);
+    setExpenseDrilldown(false);
     onSelectTab(nextTab);
+  };
+  const openExpenseHistory = (name = null) => {
+    setQuery('');
+    setCategory(name);
+    setExpenseDrilldown(name !== null);
+    setExpenseView('history');
+    document.getElementById('expense-tab-history').focus();
   };
 
   return (
@@ -355,28 +397,46 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now })
         {tab !== 'overview' && tab !== 'today' && (
           <section className="travel-section" aria-label={TABS[tab]}>
             <header className="travel-section-heading">
-              <div><h2>{TABS[tab]}</h2>{!shoppingUnconfigured && <p>{items.length}개 항목</p>}</div>
+              <div><h2>{TABS[tab]}</h2>{!shoppingUnconfigured && !showStatistics && <p>{historyItems.length}개 항목</p>}</div>
               {tab === 'checklist' && <ChecklistProgress items={items} />}
             </header>
-            {categories.length > 0 && (
-              <div role="group" aria-label={`${filterField} 필터`} className="travel-reader-chips">
-                <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)}>전체</button>
-                {categories.map(option => (
-                  <button key={option} type="button" aria-pressed={category === option} onClick={() => setCategory(option)}>
-                    {option}
-                  </button>
-                ))}
+            {isExpenses && <ExpenseTabs view={expenseView} onChange={setExpenseView} />}
+            {isExpenses && (
+              <div id="expense-panel-statistics" role="tabpanel" aria-labelledby="expense-tab-statistics" hidden={!showStatistics} tabIndex={0}>
+                {showStatistics && <ExpenseStatistics trip={data.trip} stats={stats} period={expensePeriod}
+                  onPeriodChange={setExpensePeriod} onCategory={openExpenseHistory}
+                  onHistory={() => openExpenseHistory()} lastRead={lastRead} />}
               </div>
             )}
-            {!shoppingUnconfigured && (
-              <label className="travel-reader-filter">
-                <Mark name="search" /><input type="search" aria-label="제목 검색" placeholder="제목 검색" value={query} onChange={event => setQuery(event.target.value)} />
-              </label>
-            )}
-            {shoppingUnconfigured && <p className="travel-empty">쇼핑 리스트가 아직 연결되지 않았습니다.</p>}
-            {!shoppingUnconfigured && rows.length === 0 && <p className="travel-empty">{search ? '검색 결과가 없습니다.' : '등록된 항목이 없습니다.'}</p>}
-            {tab === 'schedule' && <Timeline rows={rows} />}
-            {tab !== 'schedule' && rows.length > 0 && <RecordList rows={rows} tab={tab} />}
+            <div id={isExpenses ? 'expense-panel-history' : undefined} role={isExpenses ? 'tabpanel' : undefined}
+              aria-labelledby={isExpenses ? 'expense-tab-history' : undefined} hidden={showStatistics}>
+              {isExpenses && expenseDrilldown && (
+                <div className="expense-stats-history-scope">
+                  <p>통계 집계 범위 · {expensePeriod.start || expensePeriod.end
+                    ? `${expensePeriod.start || '처음'} ~ ${expensePeriod.end || '최근'}` : '여행 전체'}</p>
+                  <button type="button" onClick={() => openExpenseHistory()}>통계 범위 해제</button>
+                </div>
+              )}
+              {categories.length > 0 && (
+                <div role="group" aria-label={`${filterField} 필터`} className="travel-reader-chips">
+                  <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)}>전체</button>
+                  {categories.map(option => (
+                    <button key={option} type="button" aria-pressed={category === option} onClick={() => setCategory(option)}>
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!shoppingUnconfigured && (
+                <label className="travel-reader-filter">
+                  <Mark name="search" /><input type="search" aria-label="제목 검색" placeholder="제목 검색" value={query} onChange={event => setQuery(event.target.value)} />
+                </label>
+              )}
+              {shoppingUnconfigured && <p className="travel-empty">쇼핑 리스트가 아직 연결되지 않았습니다.</p>}
+              {!shoppingUnconfigured && rows.length === 0 && <p className="travel-empty">{search ? '검색 결과가 없습니다.' : '등록된 항목이 없습니다.'}</p>}
+              {tab === 'schedule' && <Timeline rows={rows} />}
+              {!showStatistics && tab !== 'schedule' && rows.length > 0 && <RecordList rows={rows} tab={tab} />}
+            </div>
           </section>
         )}
       </div>
@@ -489,20 +549,39 @@ export default function NotionTravel() {
   useEffect(() => {
     const controller = new AbortController();
     let expiryTimer;
-    readTrips(tripId, controller.signal).then(value => {
-      if (controller.signal.aborted) return;
-      setResult({ key, ...value });
-      if (value.data) setLastRead({ tripId, time: Date.now() });
-      if (tripId && value.data) {
-        expiryTimer = setTimeout(() => setResult({ key, needsPin: true }),
-          value.data.expiresAt * 1000 - Date.now());
+    let pending = false;
+    let locked = false;
+    const load = async () => {
+      if (pending || locked) return;
+      pending = true;
+      try {
+        const value = await readTrips(tripId, controller.signal);
+        if (controller.signal.aborted) return;
+        clearTimeout(expiryTimer);
+        locked = Boolean(value.needsPin);
+        setResult({ key, ...value });
+        if (value.data) setLastRead({ tripId, time: Date.now() });
+        if (tripId && value.data) {
+          expiryTimer = setTimeout(() => {
+            locked = true;
+            setResult({ key, needsPin: true });
+          }, value.data.expiresAt * 1000 - Date.now());
+        }
+      } catch (error) {
+        if (!controller.signal.aborted && !locked) setResult({ key, error: error.message });
+      } finally {
+        pending = false;
       }
-    }).catch(error => {
-      if (!controller.signal.aborted) setResult({ key, error: error.message });
-    });
+    };
+    void load();
+    const refreshExpenses = () => {
+      if (tripId && document.visibilityState === 'visible' && readRoute().tab === 'expenses') void load();
+    };
+    const expenseTimer = tripId ? setInterval(refreshExpenses, 60_000) : undefined;
     return () => {
       controller.abort();
       clearTimeout(expiryTimer);
+      clearInterval(expenseTimer);
     };
   }, [key, tripId]);
 
@@ -553,10 +632,15 @@ export default function NotionTravel() {
       </header>
       <main id="travel-content" className="travel-content" tabIndex={-1}>
         {tripId && <button className="travel-back" onClick={() => navigate(null)}><Mark name="chevronLeft" />여행 목록</button>}
-        {!current && <p className="travel-empty" role="status">여행 정보를 불러오는 중입니다.</p>}
+        {!current && (tab === 'expenses' ? (
+          <div className="travel-empty expense-stats-loading" role="status">
+            <p>지출 정보를 불러오는 중입니다.</p>
+            <div aria-hidden="true"><span /><span /><span /><span /></div>
+          </div>
+        ) : <p className="travel-empty" role="status">여행 정보를 불러오는 중입니다.</p>)}
         {current?.error && (
           <div className="travel-empty" role="alert">
-            <p>{current.error}</p>
+            <p>{tab === 'expenses' ? `지출 정보를 불러오지 못했습니다. ${current.error}` : current.error}</p>
             {lastRead?.tripId === tripId && <p>마지막 성공 조회 {new Date(lastRead.time).toLocaleTimeString('ko-KR')}</p>}
             <button className="travel-secondary" onClick={refresh}>다시 시도</button>
           </div>
@@ -580,7 +664,7 @@ export default function NotionTravel() {
           </section>
         )}
         {current?.data?.trip && (
-          <TripDetail key={tripId} data={current.data} tab={tab} selectedDate={selectedDate} now={now}
+          <TripDetail key={tripId} data={current.data} tab={tab} selectedDate={selectedDate} now={now} lastRead={lastRead?.time}
             onSelectTab={next => navigate(tripId, next, true, selectedDate)}
             onDateChange={date => navigate(tripId, 'today', true, date)} />
         )}

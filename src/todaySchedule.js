@@ -31,6 +31,17 @@ function localParts(stamp, zone) {
   return Object.fromEntries(formatter.formatToParts(stamp).map(({ type, value }) => [type, value]));
 }
 
+export function dateInZone(value, zone) {
+  const day = datePart(value);
+  if (!day || !zone) return day;
+  const [start] = value.split(' ~ ');
+  if (!start.includes('T') || !/(?:Z|[+-]\d{2}:\d{2})$/i.test(start)) return day;
+  const stamp = Date.parse(start);
+  if (!Number.isFinite(stamp)) return day;
+  const { year, month, day: localDay } = localParts(stamp, zone);
+  return `${year}-${month}-${localDay}`;
+}
+
 function localDateTime(stamp, zone) {
   const { year, month, day, hour, minute, second } = localParts(stamp, zone);
   return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
