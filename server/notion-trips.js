@@ -127,14 +127,14 @@ function notionReader(token, fetcher, signal) {
     }
   }
 
-  async function query(source, tripId) {
+  async function query(source, tripId, sorts) {
     const pages = new Map();
     const seen = new Set();
     let cursor;
     const filter = tripId ? { property: '여행', relation: { contains: tripId } } : undefined;
     do {
       const result = await request(`/data_sources/${source}/query`, {
-        page_size: 100, start_cursor: cursor, filter,
+        page_size: 100, start_cursor: cursor, filter, sorts,
       });
       if (!Array.isArray(result.results) || typeof result.has_more !== 'boolean' ||
           result.request_status?.type === 'incomplete') throw new NotionError(502);
@@ -215,7 +215,8 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
         sections.shopping = null;
         continue;
       }
-      const pages = await reader.query(sources[key], tripId);
+      const sorts = key === 'expenses' ? [{ timestamp: 'created_time', direction: 'ascending' }] : undefined;
+      const pages = await reader.query(sources[key], tripId, sorts);
       const expenses = key === 'receipts' ? new Map(sections.expenses.map(row => [row.id, row.title])) : null;
       sections[key] = pages.map(page => {
         const row = project(page, fields);

@@ -191,9 +191,11 @@ test('detail verifies each data source and scopes every section to exactly one t
       assert.equal(init.method, 'GET');
       return Response.json(trip);
     }
-    assert.deepEqual(JSON.parse(init.body).filter, { property: '여행', relation: { contains: tripId } });
+    const { filter, sorts } = JSON.parse(init.body);
+    assert.deepEqual(filter, { property: '여행', relation: { contains: tripId } });
     const key = keys.find(name => url.endsWith(`/${sources[name]}/query`));
     assert.ok(key);
+    assert.deepEqual(sorts, key === 'expenses' ? [{ timestamp: 'created_time', direction: 'ascending' }] : undefined);
     return list(rows[key] ?? []);
   });
   assert.equal(calls.length, keys.length);

@@ -151,9 +151,21 @@ function ChecklistProgress({ items }) {
   );
 }
 
+function sortBookings(bookings) {
+  return bookings.toSorted((a, b) => {
+    const first = datePart(a.fields.이용일);
+    const second = datePart(b.fields.이용일);
+    if (first === second) return 0;
+    if (!first) return 1;
+    if (!second) return -1;
+    return first.localeCompare(second);
+  });
+}
+
 function Overview({ data, onSelectTab }) {
   const { trip, sections } = data;
   const { 메모, ...fields } = trip.fields;
+  const bookingPreview = sortBookings(sections.bookings).slice(0, 3);
   return (
     <section aria-label="개요">
       <div className="travel-kpis" aria-label="예산 요약">
@@ -174,7 +186,7 @@ function Overview({ data, onSelectTab }) {
           <p>{sections.bookings.length ? `${sections.bookings.length}건의 예약` : '등록된 예약이 없습니다.'}</p>
           {sections.bookings.length > 0 && (
             <ul className="travel-summary-list">
-              {sections.bookings.slice(0, 3).map(item => (
+              {bookingPreview.map(item => (
                 <li key={item.id}>
                   <span className="travel-item-heading">
                     <span>{item.title}</span>
@@ -273,8 +285,9 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now })
   };
   const categories = filterField ? [...new Set(items.map(categoryOf))] : [];
   const search = query.trim().toLowerCase();
-  const rows = items.filter(item =>
+  const filtered = items.filter(item =>
     (category === null || categoryOf(item) === category) && item.title.toLowerCase().includes(search));
+  const rows = tab === 'bookings' ? sortBookings(filtered) : filtered;
   const selectTab = nextTab => {
     if (nextTab === tab) return;
     setQuery('');
