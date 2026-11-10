@@ -16,8 +16,15 @@ const COVERS = {
 };
 const SCHEDULE_ICONS = { 이동: 'train', 관광: 'map', 식사: 'compass', 쇼핑: 'wallet', 공연: 'music', 숙박: 'hotel', 휴식: 'home' };
 const BUDGET_FIELDS = ['총예산', '총지출', '잔여예산'];
-const FILTER_FIELDS = { bookings: '예약유형', checklist: '분류' };
+const FILTER_FIELDS = {
+  bookings: '예약유형',
+  budgets: '분류',
+  expenses: '분류',
+  checklist: '분류',
+};
 const WON_FIELDS = new Set(['총예산', '총지출', '잔여예산', '예산 KRW', '사용금액', '잔액', '원화 확정액', '집계 금액']);
+const DATE_FIELDS = new Set(['여행기간', '일시', '이용일', '결제일', '기한']);
+const LATIN_TITLE = /^(?=.*\p{Script=Latin})[\p{Script=Latin}\p{M}\p{N}\p{P}\p{Z}]+$/u;
 const ERRORS = {
   trip_pin_not_configured: '이 여행의 비밀번호가 아직 설정되지 않았습니다.',
   invalid_pin: '여행 비밀번호가 올바르지 않습니다.',
@@ -58,7 +65,7 @@ function Fields({ fields }) {
       {Object.entries(fields).map(([name, value]) => (
         <div key={name}>
           <dt>{name}</dt>
-          <dd>{typeof value === 'number'
+          <dd className={typeof value === 'number' || DATE_FIELDS.has(name) ? 'travel-number' : undefined}>{typeof value === 'number'
             ? `${WON_FIELDS.has(name) ? '₩' : ''}${value.toLocaleString('ko-KR')}${name === '현지 금액' && fields.통화 ? ` ${fields.통화}` : ''}`
             : value || '—'}</dd>
         </div>
@@ -88,7 +95,7 @@ function TripFacts({ fields }) {
   return (
     <div className="travel-facts">
       {fields.여행지 && <span><Mark name="pin" />{fields.여행지}</span>}
-      {fields.여행기간 && <span><Mark name="calendar" />{fields.여행기간}</span>}
+      {fields.여행기간 && <span className="travel-number"><Mark name="calendar" />{fields.여행기간}</span>}
     </div>
   );
 }
@@ -100,7 +107,11 @@ function TripCard({ trip, onSelect }) {
         <Cover trip={trip} />
         <div className="travel-trip-copy">
           {trip.fields.상태 && <span className="travel-badge">{trip.fields.상태}</span>}
-          <h3><button type="button" onClick={() => onSelect(trip.id)}>{trip.title}</button></h3>
+          <h3>
+            <button type="button" lang={LATIN_TITLE.test(trip.title) ? 'en' : undefined} onClick={() => onSelect(trip.id)}>
+              {trip.title}
+            </button>
+          </h3>
           <TripFacts fields={trip.fields} />
           <span className="travel-card-link">여행 상세 <Mark name="arrowRight" /></span>
         </div>
@@ -169,7 +180,7 @@ function Timeline({ rows }) {
   }
   return [...days].sort(([a], [b]) => (a || '9999').localeCompare(b || '9999')).map(([date, day]) => (
     <section className="travel-day" key={date} aria-label={date || '날짜 미정'}>
-      <h3><Mark name="calendar" />{date || '날짜 미정'}</h3>
+      <h3><Mark name="calendar" />{date ? <span className="travel-number">{date}</span> : '날짜 미정'}</h3>
       <ol className="travel-timeline">
         {day.toSorted((a, b) => {
           const time = item => item.fields.일시?.match(/T(\d{2}:\d{2})/)?.[1] ?? '99:99';
@@ -227,7 +238,7 @@ function TripDetail({ data, tab, onSelectTab }) {
         <Cover trip={data.trip} />
         <div className="travel-hero-copy">
           {data.trip.fields.상태 && <span className="travel-badge">{data.trip.fields.상태}</span>}
-          <h1>{data.trip.title}</h1>
+          <h1 lang={LATIN_TITLE.test(data.trip.title) ? 'en' : undefined}>{data.trip.title}</h1>
           <TripFacts fields={data.trip.fields} />
         </div>
       </header>
@@ -396,7 +407,7 @@ export default function NotionTravel() {
         <div className="travel-bar">
           <button className="travel-brand" onClick={() => navigate(null)} aria-label="My Travel Hub 여행 목록">
             <span className="travel-brand-icon"><Mark name="compass" size={23} /></span>
-            <span>My Travel Hub</span>
+            <span className="travel-brand-title" lang="en">My Travel Hub</span>
           </button>
           {current?.data && (
             <button className="travel-secondary" onClick={refresh}><Mark name="sync" />새로고침</button>
