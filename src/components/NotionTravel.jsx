@@ -11,11 +11,11 @@ import './NotionTravel.css';
 
 const TABS = {
   overview: '개요', today: '오늘 일정', schedule: '일정', bookings: '예약', budgets: '예산',
-  expenses: '지출', receipts: '영수증', checklist: '체크리스트', shopping: '쇼핑 리스트',
+  expenses: '지출', receipts: '영수증', checklist: '체크리스트', packing: '간편 체크리스트', shopping: '쇼핑 리스트',
 };
 const TAB_ICONS = {
   overview: 'compass', today: 'calendar', schedule: 'calendar', bookings: 'plane', budgets: 'wallet',
-  expenses: 'currency', receipts: 'fileText', checklist: 'check', shopping: 'wallet',
+  expenses: 'currency', receipts: 'fileText', checklist: 'check', packing: 'check', shopping: 'wallet',
 };
 const COVERS = {
   '4136d8c5-8de1-81ce-a4c8-dbda8e993076': 'destination-shanghai.jpg',
@@ -49,6 +49,7 @@ const ERRORS = {
   notion_not_configured: 'Notion 연동을 사용하려면 서버 설정이 필요합니다.',
   trip_not_found: '이 여행은 Notion에서 조회할 수 없습니다.',
   item_not_found: '이 항목은 현재 여행에서 조회할 수 없습니다.',
+  packing_not_found: '이 여행에 공통 준비물 간편 체크 페이지가 아직 없습니다.',
   trip_pin_required: '여행 비밀번호를 다시 입력해 주세요.',
   notion_unavailable: 'Notion에서 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
 };
@@ -287,7 +288,7 @@ function ItemBlocks({ blocks }) {
     <div className="travel-item-blocks">
       {blocks.map(({ id, type, text, checked, children }) => (
         <div className={`travel-item-block travel-item-block--${type}`} key={id}>
-          {type.startsWith('heading_') ? <h4>{text}</h4> : (
+          {type === 'divider' ? <hr /> : type.startsWith('heading_') ? <h4>{text}</h4> : (
             <p>
               {type === 'to_do' && <span className="travel-item-check" role="img"
                 aria-label={checked ? '완료' : '미완료'}>{checked ? '☑' : '☐'}</span>}
@@ -307,7 +308,8 @@ function ChecklistItemBody({ tripId, itemId, section }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams({ itemId, section });
+    const params = new URLSearchParams({ section });
+    if (itemId) params.set('itemId', itemId);
     fetch(`${tripPath(tripId)}?${params}`, {
       signal: controller.signal, credentials: 'same-origin', cache: 'no-store',
     }).then(responseData).then(data => {
@@ -329,12 +331,12 @@ function ChecklistItemBody({ tripId, itemId, section }) {
     </>
   );
 
-  const { blocks, partial } = result.data;
+  const { blocks, partial, sourceId = itemId } = result.data;
   return (
     <>
       {blocks.length > 0 && <ItemBlocks blocks={blocks} />}
       {blocks.length === 0 && !partial && <p>등록된 세부 내용이 없습니다.</p>}
-      {partial && <p>일부 내용은 <a href={`https://www.notion.so/${itemId.replaceAll('-', '')}`}
+      {partial && <p>일부 내용은 <a href={`https://www.notion.so/${sourceId.replaceAll('-', '')}`}
         target="_blank" rel="noopener noreferrer">Notion 원본</a>에서 확인할 수 있습니다.</p>}
     </>
   );
@@ -479,7 +481,16 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
         </nav>
         {tab === 'overview' && <Overview data={data} onSelectTab={selectTab} />}
         {tab === 'today' && <TodayDashboard data={data} selectedDate={selectedDate} onDateChange={onDateChange} now={now} />}
-        {tab !== 'overview' && tab !== 'today' && (
+        {tab === 'packing' && (
+          <section className="travel-section" aria-label="간편 체크리스트">
+            <header className="travel-section-heading"><h2>간편 체크리스트</h2></header>
+            <p className="travel-packing-note">Notion의 공통 준비물 간편 체크 페이지입니다. 체크 상태는 Notion에서 변경해 주세요.</p>
+            <div className="travel-reader-card">
+              <ChecklistItemBody key={lastRead} tripId={data.trip.id} section="packing" />
+            </div>
+          </section>
+        )}
+        {tab !== 'overview' && tab !== 'today' && tab !== 'packing' && (
           <section className="travel-section" aria-label={TABS[tab]}>
             <header className="travel-section-heading">
               <div><h2>{TABS[tab]}</h2>{!shoppingUnconfigured && !showStatistics && <p>{historyItems.length}개 항목</p>}</div>

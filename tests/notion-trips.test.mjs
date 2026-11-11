@@ -320,6 +320,37 @@ test('item body reads nested Notion checkboxes and paginates without exposing em
   assert.equal(result.body.blocks[0].children[0].text, '셀프 선반에서 수령');
 });
 
+test('packing reads only the named direct child page of the unlocked trip', async () => {
+  const pageId = randomUUID();
+  const endpoint = `${path}?section=packing`;
+  const neverFetch = () => assert.fail('unauthorized request reached Notion');
+  assert.equal((await request(endpoint, neverFetch)).statusCode, 401);
+  assert.equal((await request(endpoint, neverFetch, { method: 'POST' })).statusCode, 405);
+  assert.equal((await read(`${endpoint}&itemId=${pageId}`, neverFetch)).statusCode, 400);
+  let bodyCalls = 0;
+  const upstream = async (url, foreign = false) => {
+    if (url.endsWith(`/pages/${tripId}`)) return Response.json(trip);
+    if (url.includes(`/blocks/${tripId}/children`)) return list([{
+      id: pageId, type: 'child_page', child_page: { title: '공통 준비물 간편 체크' },
+    }]);
+    if (url.endsWith(`/pages/${pageId}`)) return Response.json({
+      object: 'page', id: pageId, parent: { type: 'page_id', page_id: foreign ? otherTripId : tripId },
+    });
+    assert.ok(url.includes(`/blocks/${pageId}/children`));
+    bodyCalls++;
+    return list([{
+      id: randomUUID(), type: 'to_do', to_do: { checked: true, rich_text: [{ plain_text: '여권' }] },
+    }]);
+  };
+  const res = await read(endpoint, url => upstream(url));
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.sourceId, pageId);
+  assert.equal(res.body.blocks[0].text, '여권');
+  assert.equal(res.body.blocks[0].checked, true);
+  assert.equal((await read(endpoint, url => upstream(url, true))).statusCode, 404);
+  assert.equal(bodyCalls, 1);
+});
+
 test('429 honors Retry-After and upstream failures never look like empty data', async () => {
   let count = 0;
   const recovered = await read('/api/trips', async () => ++count === 1

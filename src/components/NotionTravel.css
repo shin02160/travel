@@ -268,6 +268,7 @@ body { margin: 0; font-size: 14px; }
 .travel-item-block { white-space: pre-wrap; }
 .travel-item-block p { color: var(--text-primary); }
 .travel-item-check { display: inline-block; margin-inline-end: 8px; color: var(--primary); }
+.travel-reader .travel-packing-note { margin-block: 10px 14px; }
 .travel-item-block--bulleted_list_item > p::before { content: "• "; }
 .travel-item-block--numbered_list_item { counter-increment: item-body-list; }
 .travel-item-block--numbered_list_item > p::before { content: counter(item-body-list) ". "; }

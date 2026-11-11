@@ -16,7 +16,7 @@ const REQUIRED_SOURCES = ['trips', ...Object.keys(SECTIONS).filter(key => key !=
 const NOTION_API = 'https://api.notion.com/v1';
 const ITEM_BLOCK_TYPES = new Set([
   'paragraph', 'heading_1', 'heading_2', 'heading_3', 'to_do', 'bulleted_list_item',
-  'numbered_list_item', 'toggle', 'quote', 'callout',
+  'numbered_list_item', 'toggle', 'quote', 'callout', 'divider',
 ]);
 
 class NotionError extends Error {
@@ -204,7 +204,30 @@ function notionReader(token, fetcher, signal) {
     return { blocks, partial };
   }
 
-  return { query, readPage: id => request(`/pages/${id}`), readItemBody };
+  async function findPackingPage(tripId) {
+    const matches = new Set();
+    const seen = new Set();
+    let cursor;
+    do {
+      const params = new URLSearchParams({ page_size: '100' });
+      if (cursor) params.set('start_cursor', cursor);
+      const result = await request(`/blocks/${tripId}/children?${params}`);
+      if (!Array.isArray(result.results) || typeof result.has_more !== 'boolean') throw new NotionError(502);
+      for (const block of result.results) {
+        if (block?.type === 'child_page' && ID.test(block.id) &&
+            block.child_page?.title === '공통 준비물 간편 체크' &&
+            !block.archived && !block.in_trash && !block.is_archived) matches.add(block.id);
+      }
+      if (!result.has_more) break;
+      cursor = result.next_cursor;
+      if (typeof cursor !== 'string' || !cursor || seen.has(cursor) || seen.size >= 20) throw new NotionError(502);
+      seen.add(cursor);
+    } while (cursor);
+    if (matches.size > 1) throw new NotionError(502);
+    return [...matches][0] ?? null;
+  }
+
+  return { query, readPage: id => request(`/pages/${id}`), readItemBody, findPackingPage };
 }
 
 export async function handleTrips(req, res, env = process.env, fetcher = fetch, { behindVercel = false } = {}) {
@@ -221,8 +244,9 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   const itemSections = url.searchParams.getAll('section');
   const itemRequest = itemIds.length > 0 || itemSections.length > 0;
   const itemSection = itemSections[0];
-  if (itemRequest && (!tripId || itemIds.length !== 1 || !ID.test(itemIds[0]) ||
-      itemSections.length !== 1 || !['checklist', 'shopping'].includes(itemSection))) {
+  const packingRequest = itemSections.length === 1 && itemSection === 'packing' && itemIds.length === 0;
+  if (itemRequest && (!tripId || (!packingRequest && (itemIds.length !== 1 || !ID.test(itemIds[0]) ||
+      itemSections.length !== 1 || !['checklist', 'shopping'].includes(itemSection))))) {
     return respond(res, 400, { error: 'invalid_item_request' });
   }
   const methods = tripId && !itemRequest ? ['GET', 'POST'] : ['GET'];
@@ -269,6 +293,17 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
     });
     if (!belongsTo(trip, sources.trips) || trip.id !== tripId) {
       return respond(res, 404, { error: 'trip_not_found' });
+    }
+
+    if (packingRequest) {
+      const pageId = await reader.findPackingPage(tripId);
+      if (!pageId) return respond(res, 404, { error: 'packing_not_found' });
+      const page = await reader.readPage(pageId);
+      if (page?.id !== pageId || page.parent?.type !== 'page_id' || page.parent.page_id !== tripId ||
+          page.archived || page.in_trash || page.is_archived) {
+        return respond(res, 404, { error: 'packing_not_found' });
+      }
+      return sendData({ sourceId: pageId, ...await reader.readItemBody(pageId) });
     }
 
     if (itemRequest) {
