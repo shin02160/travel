@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { Icon } from '../icons.jsx';
 import { chooseTrips, datePart, tripCalendar } from '../todaySchedule.js';
+import { formatDateTime, formatLocalTimestamp } from '../dateDisplay.js';
 import { calculateExpenseStatistics, expenseCategory } from '../expenseStatistics.js';
 import { compareBookingUseDate, sortByDisplayOrder } from '../displayOrder.js';
 import { readTripViewState, saveTripViewState } from '../tripViewState.js';
@@ -89,7 +90,7 @@ function Fields({ fields }) {
           <dt>{name}</dt>
           <dd className={typeof value === 'number' || DATE_FIELDS.has(name) ? 'travel-number' : undefined}>{typeof value === 'number'
             ? `${WON_FIELDS.has(name) ? '₩' : ''}${value.toLocaleString('ko-KR')}${name === '현지 금액' && fields.통화 ? ` ${fields.통화}` : ''}`
-            : settlementLabel(value) || '—'}</dd>
+            : (DATE_FIELDS.has(name) ? formatDateTime(value) : settlementLabel(value)) || '—'}</dd>
         </div>
       ))}
     </dl>
@@ -117,7 +118,7 @@ function TripFacts({ fields }) {
   return (
     <div className="travel-facts">
       {fields.여행지 && <span><Mark name="pin" />{fields.여행지}</span>}
-      {fields.여행기간 && <span className="travel-number"><Mark name="calendar" />{fields.여행기간}</span>}
+      {fields.여행기간 && <span className="travel-number"><Mark name="calendar" />{formatDateTime(fields.여행기간)}</span>}
     </div>
   );
 }
@@ -257,13 +258,13 @@ function Timeline({ rows }) {
         }).map(row => {
           const { 일시, 구분, 장소, ...more } = row.fields;
           const time = 일시?.match(/T(\d{2}:\d{2})/)?.[1];
-          const details = { 일시, ...more };
+          const details = { 일시, ...more, ...(row.note?.trim() ? { 메모: row.note } : {}) };
           return (
             <li key={row.id}>
               <span className="travel-timeline-icon"><Mark name={SCHEDULE_ICONS[구분] ?? 'calendar'} /></span>
               <article className="travel-reader-card">
                 <div className="travel-event-meta">
-                  {time && <span className="travel-event-time">{time}</span>}
+                  {time && <span className="travel-event-time">{date} {time}</span>}
                   {구분 && <span className="travel-badge">{구분}</span>}
                 </div>
                 <div className="travel-item-heading">
@@ -738,7 +739,7 @@ export default function NotionTravel() {
         {current?.error && (
           <div className="travel-empty" role="alert">
             <p>{tab === 'expenses' ? `지출 정보를 불러오지 못했습니다. ${current.error}` : current.error}</p>
-            {lastRead?.tripId === tripId && <p>마지막 성공 조회 {new Date(lastRead.time).toLocaleTimeString('ko-KR')}</p>}
+            {lastRead?.tripId === tripId && <p>마지막 성공 조회 {formatLocalTimestamp(lastRead.time)}</p>}
             <button className="travel-secondary" onClick={refresh}>다시 시도</button>
           </div>
         )}

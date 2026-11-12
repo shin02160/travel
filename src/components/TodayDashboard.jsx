@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { Icon } from '../icons.jsx';
 import { planDay, shiftDate, tripCalendar } from '../todaySchedule.js';
+import { formatDateTime } from '../dateDisplay.js';
 import StatusChips from './StatusChips.jsx';
 
 const EVENT_ICONS = { 이동: 'train', 관광: 'map', 식사: 'compass', 쇼핑: 'wallet', 공연: 'music', 숙박: 'hotel', 휴식: 'home' };
-const dateLabel = new Intl.DateTimeFormat('ko-KR', {
-  year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', timeZone: 'UTC',
-});
 
 function EventDetails({ row, end, bookings }) {
   const [copyMessage, setCopyMessage] = useState('');
@@ -28,7 +26,7 @@ function EventDetails({ row, end, bookings }) {
     <details>
       <summary>일정 상세</summary>
       <dl className="travel-reader-fields">
-        {sourceTime && <div><dt>{end ? '시작·종료' : '일시'}</dt><dd className="travel-number">{sourceTime}</dd></div>}
+        {sourceTime && <div><dt>{end ? '시작·종료' : '일시'}</dt><dd className="travel-number">{formatDateTime(sourceTime)}</dd></div>}
         {zone && <div><dt>시간대</dt><dd>{zone}</dd></div>}
         {location && <div><dt>장소</dt><dd>{location}</dd></div>}
         {row.note && <div><dt>메모</dt><dd>{row.note}</dd></div>}
@@ -74,7 +72,7 @@ export default function TodayDashboard({ data, selectedDate, onDateChange, now }
       <header className="travel-reader-card travel-today-heading">
         <div>
           <p className="travel-eyebrow">현지 일정</p>
-          <h2>{dateLabel.format(new Date(`${day}T00:00:00Z`))}</h2>
+          <h2>{day}</h2>
           <p>{zone ?? '시간대 확인 필요'}</p>
         </div>
         <div className="travel-today-actions" aria-label="일정 날짜 선택">
@@ -88,7 +86,7 @@ export default function TodayDashboard({ data, selectedDate, onDateChange, now }
           <h3 id="travel-next-event">다음 일정</h3>
           {isToday && next ? (
             <>
-              <p className="travel-event-time">{next.time}</p>
+              <p className="travel-event-time">{day} {next.time}</p>
               <div className="travel-item-heading">
                 <h4>{next.row.title}</h4>
                 <StatusChips statuses={{ 진행상태: next.row.fields.진행상태 }} />
@@ -109,11 +107,11 @@ export default function TodayDashboard({ data, selectedDate, onDateChange, now }
                     <span className="travel-timeline-icon" aria-hidden="true"><Icon name={EVENT_ICONS[구분] ?? 'calendar'} size={18} /></span>
                     <article className="travel-reader-card">
                       <div className="travel-event-meta">
-                        <span className="travel-event-time">{allDay ? '종일' : time ?? '시간 미정'}</span>
+                        <span className="travel-event-time">{day} {allDay ? '종일' : time ?? '시간 미정'}</span>
                         {구분 && <span className="travel-badge">{구분}</span>}
                         {passed && <span className="travel-badge">예정 시간 지남</span>}
                         {time && stamp === null && <span className="travel-badge">시간대 확인 필요</span>}
-                        {eventEnd?.slice(0, 10) > day && <span className="travel-badge">{eventEnd.slice(0, 10)} 종료</span>}
+                        {eventEnd?.slice(0, 10) > day && <span className="travel-badge">{formatDateTime(eventEnd)} 종료</span>}
                       </div>
                       <div className="travel-item-heading">
                         <h4>{row.title}</h4>

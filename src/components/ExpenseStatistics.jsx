@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatLocalTimestamp } from '../dateDisplay.js';
 import './ExpenseStatistics.css';
 
 const currency = new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' });
@@ -106,7 +107,7 @@ export default function ExpenseStatistics({ trip, stats, period, onPeriodChange,
             onChange={event => onPeriodChange({ start, end: event.target.value })} /></label>
         </div>
         {filtered && <button type="button" onClick={() => onPeriodChange({ start: '', end: '' })}>여행 전체</button>}
-        {lastRead && <p>최근 Notion 조회 {new Date(lastRead).toLocaleString('ko-KR')}</p>}
+        {lastRead && <p>최근 Notion 조회 {formatLocalTimestamp(lastRead)}</p>}
       </div>
       {invalidRange ? <p className="travel-empty" role="alert">종료일을 시작일과 같거나 이후로 설정해 주세요.</p> : (
         <>
