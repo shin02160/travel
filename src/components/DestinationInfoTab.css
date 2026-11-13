@@ -34,7 +34,15 @@
 .destination-weather-footer small { display: block; margin-top: 3px; }
 .travel-reader .destination-weather-footer button { border: 1px solid #ffffff75; background: #ffffff14; color: #fff; border-radius: 999px; }
 .travel-reader .destination-weather :is(button, a, ul):focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
-.destination-info .destination-forecast-note { margin-block: 10px 22px; }
+.destination-clothing { margin-block: 14px 22px; }
+.travel-reader .destination-clothing h4 { margin-top: 16px; }
+.destination-clothing-days { list-style: none; padding: 0; margin: 8px 0 0; }
+.destination-clothing-days li {
+  display: flex; flex-wrap: wrap; gap: 2px 12px; justify-content: space-between;
+  padding: 7px 0; border-top: 1px solid var(--border);
+}
+.destination-clothing-days time { font-variant-numeric: tabular-nums; }
+.travel-reader .destination-clothing button { margin-top: 10px; }
 .travel-reader .destination-region > p { margin: 4px 0 12px; }
 .destination-region-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .destination-region-card { min-width: 0; }

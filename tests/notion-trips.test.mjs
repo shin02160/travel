@@ -76,6 +76,7 @@ test('destination cards enforce PIN, trip and city boundaries and sanitize sourc
     ...row('shopping', {
       여행: relation(...relationIds), '도시 코드': select(city), 분류: select(category),
       내용: { type: 'rich_text', rich_text: [{ plain_text: text }] },
+      '추천 옷차림': { type: 'rich_text', rich_text: [{ plain_text: `${text} 옷차림` }] },
       '정보 상태': select('공식 확인'),
       확인일: { type: 'date', date: { start: '2026-11-13' } },
       '출처 URL': { type: 'url', url },
@@ -95,14 +96,19 @@ test('destination cards enforce PIN, trip and city boundaries and sanitize sourc
       regionRow('MO_MACAU', [otherTripId], 'other trip', null),
       regionRow('MO_MACAU', [id, otherTripId], 'multiple trips', null),
       regionRow('MO_MACAU', [id], 'source retained', 'https://example.org/', '여행 팁'),
+      regionRow('MO_MACAU', [id], 'local features', null, '지역 특징'),
+      regionRow('CN_GUANGZHOU', [id], 'other city features', null, '지역 특징'),
+      regionRow('MO_MACAU', [otherTripId], 'other trip features', null, '지역 특징'),
     ]);
   };
   const { body, statusCode } = await request(endpoint, fixture, { headers, config });
   assert.equal(statusCode, 200);
   assert.deepEqual(body.cards.map(({ text, date, status, url }) => [text, date, status, url]), [
+    ['local features', '2026-11-13', '미확인', null],
     ['macau', '2026-11-13', '미확인', null],
     ['source retained', '2026-11-13', '공식 확인', 'https://example.org/'],
   ]);
+  assert.deepEqual(body.cards.flatMap(card => card.clothing ? [card.clothing] : []), ['local features 옷차림']);
   const unconfigured = await request(endpoint, fixture, { headers, config: { ...config, NOTION_TRAVEL_INFO_SOURCE_ID: '' } });
   assert.equal(unconfigured.body.configured, false);
   assert.deepEqual(unconfigured.body.cards, []);

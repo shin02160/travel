@@ -336,6 +336,7 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
         const body = summary ? null : await reader.readItemBody(page.id);
         return {
           category, text: summary || bodyText(body.blocks), partial: body?.partial ?? false,
+          ...(category === '지역 특징' && { clothing: propertyValue(p['추천 옷차림'])?.trim() || null }),
           date: verifiedDate, url, source: url ? propertyValue(p.출처명) : null,
           status: status === '예상' ? status : status === '공식 확인' && url && verifiedDate ? status : '미확인',
         };

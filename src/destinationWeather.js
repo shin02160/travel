@@ -1,3 +1,5 @@
+import { shiftDate } from './todaySchedule.js';
+
 export const WEATHER_TTL = 30 * 60 * 1000;
 export const WEATHER_MAX_AGE = 6 * 60 * 60 * 1000;
 
@@ -50,8 +52,9 @@ export function normalizeWeather(data, city, fetchedAt) {
   const last = new Date(Date.parse(today + 'T00:00:00Z') + 6 * 86400000).toISOString().slice(0, 10);
   const daily = series(data.daily, datePattern, {
     low: ['temperature_2m_min', number], high: ['temperature_2m_max', number], code: ['weather_code', number],
+    rain: ['precipitation_probability_max', chance],
   }, 7).filter(slot => slot.time >= today && slot.time <= last &&
-    (slot.low !== null || slot.high !== null || slot.code !== null));
+    (slot.low !== null || slot.high !== null || slot.code !== null || slot.rain !== null));
   if (daily.some(({ low, high }) => low !== null && high !== null && low > high)) throw new Error('invalid_weather_range');
   return { current: observed, hourly, daily, fetchedAt };
 }
@@ -70,13 +73,26 @@ export async function fetchWeatherForecast(city, signal, fetcher = fetch) {
     latitude: city.latitude, longitude: city.longitude, timezone: city.zone, forecast_days: '7',
     temperature_unit: 'celsius', current: 'temperature_2m,apparent_temperature,weather_code,is_day',
     hourly: 'temperature_2m,precipitation_probability,weather_code,is_day',
-    daily: 'temperature_2m_max,temperature_2m_min,weather_code',
+    daily: 'temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max',
   }).toString();
   const response = await fetcher(url, { signal, redirect: 'error' });
   if (!response.ok) throw new Error('weather_unavailable');
   const data = await response.json();
   normalizeWeather(data, city, Date.now());
   return data;
+}
+
+export function travelForecastDays({ start, end, today }, daily) {
+  if (!start || !end || !today || end < today) return { days: [], pendingFrom: null };
+  const first = start > today ? start : today;
+  const horizon = shiftDate(today, 6);
+  const byDate = new Map(daily.map(row => [row.time, row]));
+  const days = [];
+  for (let date = first; date <= end && date <= horizon; date = shiftDate(date, 1)) {
+    days.push({ date, forecast: byDate.get(date) ?? null });
+  }
+  const pendingFrom = end > horizon ? (first > horizon ? first : shiftDate(horizon, 1)) : null;
+  return { days, pendingFrom };
 }
 
 export function weatherCondition(code, day) {

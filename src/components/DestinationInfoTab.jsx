@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { citiesForTrip, INFO_CATEGORIES } from '../destinationCities.js';
-import { loadWeather, localWeatherTime, WEATHER_MAX_AGE, WEATHER_TTL, weatherCondition } from '../destinationWeather.js';
+import { loadWeather, localWeatherTime, travelForecastDays, WEATHER_MAX_AGE, WEATHER_TTL, weatherCondition } from '../destinationWeather.js';
+import { tripCalendar } from '../todaySchedule.js';
 import './DestinationInfoTab.css';
 
 const weatherCache = new Map();
@@ -152,17 +153,14 @@ function DailyForecast({ rows }) {
   </div>;
 }
 
-function WeatherCard({ city, travelDates, epoch }) {
-  const { data, status, locked, refresh } = useWeather(city);
+function WeatherCard({ city, weather, epoch }) {
+  const { data, status, locked, refresh } = weather;
   const now = localWeatherTime(epoch, city.zone);
   const daily = data?.daily.filter(row => row.time >= now.slice(0, 10)) ?? [];
   const hourly = data?.hourly.filter(row => row.time >= now).slice(0, 12) ?? [];
   const today = daily.find(row => row.time === now.slice(0, 10));
   const [condition, icon] = weatherCondition(data?.current?.code, data?.current?.day);
-  const dates = travelDates?.match(/\d{4}-\d{2}-\d{2}/g) ?? [];
-  const outsideForecast = dates.length > 0 && daily.length > 0 &&
-    (dates[0] < daily[0].time || dates.at(-1) > daily.at(-1).time);
-  return <>
+  return (
     <section className="destination-weather" aria-label={`${city.name} 날씨`}>
       <div className="destination-weather-inner">
         <div className="destination-weather-top">
@@ -208,13 +206,10 @@ function WeatherCard({ city, travelDates, epoch }) {
         <button type="button" onClick={refresh} disabled={locked}>{status === 'error' || status === 'empty' ? '다시 시도' : '↻ 새로고침'}</button>
       </footer>
     </section>
-    <p className="destination-forecast-note">{outsideForecast
-      ? '여행 일정 중 7일 예보 범위를 벗어난 날짜의 상세 예보는 아직 제공되지 않습니다.'
-      : '예보는 현지 날짜 기준으로 제공되며, 7일 범위 안의 날짜만 표시합니다.'}</p>
-  </>;
+  );
 }
 
-function RegionCards({ tripId, city }) {
+function useRegionCards(tripId, city) {
   const [result, setResult] = useState({ status: 'loading', cards: [] });
   useEffect(() => {
     const controller = new AbortController();
@@ -231,6 +226,51 @@ function RegionCards({ tripId, city }) {
     });
     return () => controller.abort();
   }, [tripId, city]);
+  return result;
+}
+
+function ClothingGuide({ city, calendar, result, weather }) {
+  const clothing = result.cards.find(card => card.category === '지역 특징')?.clothing;
+  const { days, pendingFrom } = travelForecastDays(calendar, weather.data?.daily ?? []);
+  const hasForecast = days.some(day => day.forecast);
+  const failed = weather.status === 'error' || weather.status === 'stale';
+
+  return <section className="travel-reader-card destination-region-card destination-clothing" aria-label={`${city.name} 옷차림 가이드`}>
+    <h3>{city.name} 옷차림 가이드</h3>
+    <p>{clothing || {
+      loading: 'Notion에서 옷차림을 불러오는 중입니다.',
+      error: 'Notion 옷차림 정보를 불러오지 못했습니다.',
+      unconfigured: 'Notion 여행지 정보가 아직 연결되지 않았습니다.',
+    }[result.status] || 'Notion에 등록된 추천 옷차림이 없습니다.'}</p>
+
+    <h4>여행 기간 중 {city.name} 예보</h4>
+    {!calendar.start || !calendar.end ? <p>여행 날짜가 등록되면 날짜별 예보를 표시합니다.</p> :
+      calendar.end < calendar.today ? <p>여행이 종료되었습니다.</p> :
+      !days.length ? <p>여행 날짜의 예보는 아직 제공되지 않습니다.</p> :
+      weather.status === 'loading' && !weather.data ? <p role="status">여행 날짜의 예보를 불러오는 중입니다.</p> :
+      !hasForecast && failed ? <p>여행 날짜의 예보를 불러오지 못했습니다.</p> :
+      <>
+        {weather.status === 'stale' && <p>마지막으로 불러온 예보입니다.</p>}
+        <ul className="destination-clothing-days">
+          {days.map(({ date, forecast }) => <li key={date}>
+            <time dateTime={date}>{date}</time>
+            {forecast ? <span>
+              최저 {temp(forecast.low, '°C')} · 최고 {temp(forecast.high, '°C')}
+              {' · '}최대 강수확률 {forecast.rain === null ? '—' : `${forecast.rain}%`}
+            </span> : <span>예보 대기</span>}
+          </li>)}
+          {pendingFrom && <li>
+            <span><time dateTime={pendingFrom}>{pendingFrom}</time>
+              {pendingFrom !== calendar.end && <> ~ <time dateTime={calendar.end}>{calendar.end}</time></>}</span>
+            <span>예보 대기</span>
+          </li>}
+        </ul>
+      </>}
+    {failed && <button type="button" onClick={weather.refresh} disabled={weather.locked}>예보 다시 시도</button>}
+  </section>;
+}
+
+function RegionCards({ result }) {
   return <section className="destination-region" aria-label="알아두면 좋은 지역 정보">
     <h3>알아두면 좋은 지역 정보</h3>
     <p>Notion에 저장된 내용만 표시 · 자동 갱신하지 않음</p>
@@ -258,6 +298,17 @@ function RegionCards({ tripId, city }) {
   </section>;
 }
 
+function CityInformation({ city, trip, now }) {
+  const weather = useWeather(city);
+  const result = useRegionCards(trip.id, city);
+  const calendar = tripCalendar(trip, now);
+  return <>
+    <WeatherCard city={city} weather={weather} epoch={now} />
+    <ClothingGuide city={city} calendar={calendar} result={result} weather={weather} />
+    <RegionCards result={result} />
+  </>;
+}
+
 export default function DestinationInfoTab({ trip, now }) {
   const cities = citiesForTrip(trip.id);
   const [cityId, setCityId] = useState(cities[0]?.id);
@@ -270,9 +321,7 @@ export default function DestinationInfoTab({ trip, now }) {
           onClick={() => setCityId(option.id)}>{option.name}</button>)}
       </div>}
     </header>
-    {city ? <div key={city.id}>
-      <WeatherCard city={city} travelDates={trip.fields.여행기간} epoch={now} />
-      <RegionCards tripId={trip.id} city={city} />
-    </div> : <p className="travel-empty">이 여행에는 아직 등록된 도시가 없습니다.</p>}
+    {city ? <CityInformation key={`${trip.id}:${city.id}`} city={city} trip={trip} now={now} />
+      : <p className="travel-empty">이 여행에는 아직 등록된 도시가 없습니다.</p>}
   </section>;
 }
