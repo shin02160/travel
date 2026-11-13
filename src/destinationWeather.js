@@ -57,6 +57,14 @@ export function normalizeWeather(data, city, fetchedAt) {
 }
 
 export async function loadWeather(city, signal, fetcher = fetch) {
+  const response = await fetcher('/api/weather?' + new URLSearchParams({ city: city.id }), {
+    signal, credentials: 'omit',
+  });
+  if (!response.ok) throw new Error('weather_unavailable');
+  return normalizeWeather(await response.json(), city, Date.now());
+}
+
+export async function fetchWeatherForecast(city, signal, fetcher = fetch) {
   const url = new URL('https://api.open-meteo.com/v1/forecast');
   url.search = new URLSearchParams({
     latitude: city.latitude, longitude: city.longitude, timezone: city.zone, forecast_days: '7',
@@ -64,9 +72,11 @@ export async function loadWeather(city, signal, fetcher = fetch) {
     hourly: 'temperature_2m,precipitation_probability,weather_code,is_day',
     daily: 'temperature_2m_max,temperature_2m_min,weather_code',
   }).toString();
-  const response = await fetcher(url, { signal, credentials: 'omit', referrerPolicy: 'no-referrer' });
+  const response = await fetcher(url, { signal, redirect: 'error' });
   if (!response.ok) throw new Error('weather_unavailable');
-  return normalizeWeather(await response.json(), city, Date.now());
+  const data = await response.json();
+  normalizeWeather(data, city, Date.now());
+  return data;
 }
 
 export function weatherCondition(code, day) {

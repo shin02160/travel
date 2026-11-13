@@ -95,4 +95,4 @@ PIN 매핑, 서명 키, Redis 토큰은 비밀 환경변수로 저장합니다. 
 
 `정보` 탭은 여행 PIN을 확인한 뒤 선택한 여행과 도시의 지역 정보를 읽습니다. Vercel에 데이터 소스 ID를 설정하고 기존 Notion 통합에 해당 DB의 읽기 권한이 있는지 확인합니다. 앱에서 Notion에 쓰지 않습니다.
 
-날씨는 브라우저에서 도시 대표 좌표로 [Open-Meteo](https://open-meteo.com/en/docs)에 요청합니다. 배포 전 [무료 API 사용 조건](https://open-meteo.com/en/terms)을 확인하고 운영 중 호출량과 오류를 확인합니다.
+날씨는 앱 서버에서 도시 대표 좌표로 [Open-Meteo](https://open-meteo.com/en/docs)에 요청합니다. Vercel은 도시별 응답을 5분간 캐시합니다. 배포 전 [무료 API 사용 조건](https://open-meteo.com/en/terms)을 확인하고 운영 중 호출량과 오류를 확인합니다.

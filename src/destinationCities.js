@@ -10,4 +10,5 @@ const trips = new Map([
 ]);
 
 export const citiesForTrip = tripId => trips.get(tripId) ?? [];
+export const cityForWeather = id => Object.hasOwn(cities, id) ? cities[id] : null;
 export const INFO_CATEGORIES = ['지역 특징', '주요 교통', '주의사항', '여행 팁'];

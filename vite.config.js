@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { handleTrips } from './server/notion-trips.js'
 import { handleAuth } from './server/auth-core.js'
+import { handleWeather } from './api/weather.js'
 
 // Local development API. For production, api/auth.js runs as a Vercel function.
 export default defineConfig(({ mode }) => {
@@ -10,6 +11,10 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), {
       name: 'travel-local-api',
       configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url?.split('?')[0] !== '/api/weather') return next()
+          return handleWeather(req, res).catch(next)
+        })
         server.middlewares.use((req, res, next) => {
           const path = req.url?.split('?')[0]
           if (path !== '/api/trips' && !/^\/api\/trips\/[^/]+$/.test(path)) return next()
