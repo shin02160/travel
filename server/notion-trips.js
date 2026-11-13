@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { tripPinConfig, tripSessionExpiry, unlockTrip } from './trip-pin.js';
+import { citiesForTrip, INFO_CATEGORIES } from '../src/destinationCities.js';
 
 const ID = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const SECTIONS = {
@@ -106,6 +107,19 @@ function belongsToTrip(page, tripId) {
     Array.isArray(relation.relation) && relation.relation.length === 1 && relation.relation[0]?.id === tripId;
 }
 
+function destinationSourceUrl(property) {
+  try {
+    const url = new URL(property?.url);
+    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function bodyText(blocks) {
+  return blocks.flatMap(block => [block.text, ...bodyText(block.children)]).filter(Boolean).join('\n');
+}
+
 function notionReader(token, fetcher, signal) {
   async function request(path, body) {
     for (let attempt = 0; ; attempt++) {
@@ -131,11 +145,12 @@ function notionReader(token, fetcher, signal) {
     }
   }
 
-  async function query(source, tripId, sorts) {
+  async function query(source, tripId, sorts, city) {
     const pages = new Map();
     const seen = new Set();
     let cursor;
-    const filter = tripId ? { property: '여행', relation: { contains: tripId } } : undefined;
+    const tripFilter = tripId ? { property: '여행', relation: { contains: tripId } } : undefined;
+    const filter = city ? { and: [tripFilter, { property: '도시 코드', select: { equals: city } }] } : tripFilter;
     do {
       const result = await request(`/data_sources/${source}/query`, {
         page_size: 100, start_cursor: cursor, filter, sorts,
@@ -143,7 +158,8 @@ function notionReader(token, fetcher, signal) {
       if (!Array.isArray(result.results) || typeof result.has_more !== 'boolean' ||
           result.request_status?.type === 'incomplete') throw new NotionError(502);
       for (const page of result.results) {
-        if (belongsTo(page, source) && (!tripId || belongsToTrip(page, tripId))) pages.set(page.id, page);
+        if (belongsTo(page, source) && (!tripId || belongsToTrip(page, tripId)) &&
+            (!city || propertyValue(page.properties['도시 코드']) === city)) pages.set(page.id, page);
       }
       if (!result.has_more) return [...pages.values()];
       cursor = result.next_cursor;
@@ -242,11 +258,15 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   const tripId = ids[0]?.toLowerCase();
   const itemIds = url.searchParams.getAll('itemId');
   const itemSections = url.searchParams.getAll('section');
-  const itemRequest = itemIds.length > 0 || itemSections.length > 0;
+  const cityIds = url.searchParams.getAll('city');
+  const itemRequest = itemIds.length > 0 || itemSections.length > 0 || cityIds.length > 0;
   const itemSection = itemSections[0];
   const packingRequest = itemSections.length === 1 && itemSection === 'packing' && itemIds.length === 0;
-  if (itemRequest && (!tripId || (!packingRequest && (itemIds.length !== 1 || !ID.test(itemIds[0]) ||
-      itemSections.length !== 1 || !['checklist', 'shopping'].includes(itemSection))))) {
+  const infoRequest = itemSections.length === 1 && itemSection === 'info' && itemIds.length === 0 &&
+    cityIds.length === 1 && citiesForTrip(tripId).some(city => city.id === cityIds[0]);
+  const recordRequest = itemIds.length === 1 && ID.test(itemIds[0]) &&
+    itemSections.length === 1 && ['checklist', 'shopping'].includes(itemSection);
+  if (itemRequest && (!tripId || !(infoRequest || (cityIds.length === 0 && (packingRequest || recordRequest))))) {
     return respond(res, 400, { error: 'invalid_item_request' });
   }
   const methods = tripId && !itemRequest ? ['GET', 'POST'] : ['GET'];
@@ -267,9 +287,10 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   const sources = Object.fromEntries(sourceKeys.map(key => [
     key, env[`NOTION_TRAVEL_${key.toUpperCase()}_SOURCE_ID`]?.trim().toLowerCase(),
   ]));
+  const infoSource = env.NOTION_TRAVEL_INFO_SOURCE_ID?.trim().toLowerCase();
   if (!token || !ID.test(sources.trips) || (tripId && (
-    sourceKeys.some(key => !ID.test(sources[key])) ||
-    new Set(Object.values(sources)).size !== sourceKeys.length
+    infoRequest ? (infoSource && (!ID.test(infoSource) || Object.values(sources).includes(infoSource))) :
+      (sourceKeys.some(key => !ID.test(sources[key])) || new Set(Object.values(sources)).size !== sourceKeys.length)
   ))) {
     return respond(res, 503, { error: 'notion_not_configured' });
   }
@@ -293,6 +314,33 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
     });
     if (!belongsTo(trip, sources.trips) || trip.id !== tripId) {
       return respond(res, 404, { error: 'trip_not_found' });
+    }
+
+    if (infoRequest) {
+      if (!infoSource) return sendData({ cards: [], configured: false });
+      const pages = await reader.query(infoSource, tripId, undefined, cityIds[0]);
+      const cards = await Promise.all(INFO_CATEGORIES.map(async category => {
+        const matches = pages.filter(page => propertyValue(page.properties.분류) === category);
+        if (matches.length > 1) {
+          console.warn('Duplicate destination info category', { city: cityIds[0], category });
+          return { category, duplicate: true };
+        }
+        if (!matches.length) return null;
+        const page = matches[0];
+        const p = page.properties;
+        const url = destinationSourceUrl(p['출처 URL']);
+        const start = p.확인일?.date?.start;
+        const verifiedDate = typeof start === 'string' ? start.match(/^\d{4}-\d{2}-\d{2}(?=T|$)/)?.[0] ?? null : null;
+        const status = propertyValue(p['정보 상태']);
+        const summary = propertyValue(p.내용)?.trim();
+        const body = summary ? null : await reader.readItemBody(page.id);
+        return {
+          category, text: summary || bodyText(body.blocks), partial: body?.partial ?? false,
+          date: verifiedDate, url, source: url ? propertyValue(p.출처명) : null,
+          status: status === '예상' ? status : status === '공식 확인' && url && verifiedDate ? status : '미확인',
+        };
+      }));
+      return sendData({ cards: cards.filter(Boolean), configured: true });
     }
 
     if (packingRequest) {

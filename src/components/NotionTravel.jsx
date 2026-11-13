@@ -6,6 +6,7 @@ import { calculateExpenseStatistics, expenseCategory } from '../expenseStatistic
 import { compareBookingUseDate, sortByDisplayOrder } from '../displayOrder.js';
 import { readTripViewState, saveTripViewState } from '../tripViewState.js';
 import ExpenseStatistics from './ExpenseStatistics.jsx';
+import DestinationInfoTab from './DestinationInfoTab.jsx';
 import TodayDashboard from './TodayDashboard.jsx';
 import StatusChips from './StatusChips.jsx';
 import './NotionTravel.css';
@@ -13,10 +14,12 @@ import './NotionTravel.css';
 const TABS = {
   overview: '개요', today: '오늘 일정', schedule: '일정', bookings: '예약', budgets: '예산',
   expenses: '지출', receipts: '영수증', checklist: '체크리스트', packing: '간편 체크리스트', shopping: '쇼핑 리스트',
+  info: '정보',
 };
 const TAB_ICONS = {
   overview: 'compass', today: 'calendar', schedule: 'calendar', bookings: 'plane', budgets: 'wallet',
   expenses: 'currency', receipts: 'fileText', checklist: 'check', packing: 'check', shopping: 'wallet',
+  info: 'compass',
 };
 const COVERS = {
   '4136d8c5-8de1-81ce-a4c8-dbda8e993076': 'destination-shanghai.jpg',
@@ -413,7 +416,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
     }
   });
   const { expenseView, expensePeriod, expenseDrilldown, opened } = view;
-  const { query, category } = view.filters[tab];
+  const { query = '', category = null } = view.filters[tab] ?? {};
   useEffect(() => {
     try {
       saveTripViewState(data.trip.id, view, window.sessionStorage);
@@ -491,7 +494,8 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
             </div>
           </section>
         )}
-        {tab !== 'overview' && tab !== 'today' && tab !== 'packing' && (
+        {tab === 'info' && <DestinationInfoTab key={`${data.trip.id}:${lastRead}`} trip={data.trip} now={now} />}
+        {!['overview', 'today', 'packing', 'info'].includes(tab) && (
           <section className="travel-section" aria-label={TABS[tab]}>
             <header className="travel-section-heading">
               <div><h2>{TABS[tab]}</h2>{!shoppingUnconfigured && !showStatistics && <p>{historyItems.length}개 항목</p>}</div>

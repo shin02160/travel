@@ -88,6 +88,11 @@ PIN 매핑, 서명 키, Redis 토큰은 비밀 환경변수로 저장합니다. 
    | `NOTION_TRAVEL_RECEIPTS_SOURCE_ID` | 영수증 관리 |
    | `NOTION_TRAVEL_CHECKLIST_SOURCE_ID` | 여행 체크리스트 |
    | `NOTION_TRAVEL_SHOPPING_SOURCE_ID` | 쇼핑 리스트. 미설정 시 기존 여행 상세는 열리며 쇼핑 탭에 연결 안내가 표시됩니다. |
+   | `NOTION_TRAVEL_INFO_SOURCE_ID` | 여행지 정보 (선택). 기존 데이터 소스 ID: `846412f2-7bc7-499b-b36c-fd84b79a991e`. 미설정이어도 날씨는 조회됩니다. |
 
 3. 체크리스트와 쇼핑 리스트는 별도의 DB에서 조회합니다. 두 DB 모두 각 항목의 `여행` 관계에 여행 마스터의 여행 한 건을 연결합니다. DB에서 속성명을 바꾸면 서버 매핑을 같이 갱신해야 합니다. 계산값을 Notion이 제공하지 않으면 화면에는 대시를 표시합니다.
 4. 목 테스트로 공개 목록, PIN 검증·만료·여행 간 격리, 시도 제한 장애, 쓰기 요청 거부, Notion 관계 검증과 페이지네이션을 확인합니다. 실제 배포에서 PIN 설정 후 두 여행의 상세가 각각 열리는지, Notion 변경이 새로고침에 반영되는지 확인합니다.
+
+`정보` 탭은 여행 PIN을 확인한 뒤 선택한 여행과 도시의 지역 정보를 읽습니다. Vercel에 데이터 소스 ID를 설정하고 기존 Notion 통합에 해당 DB의 읽기 권한이 있는지 확인합니다. 앱에서 Notion에 쓰지 않습니다.
+
+날씨는 브라우저에서 도시 대표 좌표로 [Open-Meteo](https://open-meteo.com/en/docs)에 요청합니다. 배포 전 [무료 API 사용 조건](https://open-meteo.com/en/terms)을 확인하고 운영 중 호출량과 오류를 확인합니다.
