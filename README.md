@@ -67,11 +67,14 @@ My Travel Hub의 DB 8개를 조회해 아래 구조를 확인했습니다. 모�
 | 환경변수 | 설정 |
 | --- | --- |
 | `TRAVEL_DETAIL_PINS` | Notion **여행 페이지 ID**를 키로, 4자리 PIN 문자열을 값으로 둔 JSON. 예시 `{"00000000-0000-4000-8000-000000000001":"0427"}`. 하이픈이 있는 소문자 UUID를 사용합니다. |
+| `TRAVEL_DETAIL_ADDITIONAL_PINS` | 기존 Secret 값을 확인할 수 없을 때 새 여행만 추가하는 선택 JSON 매핑. 형식은 `TRAVEL_DETAIL_PINS`와 같습니다. 기존 매핑에 없는 여행에만 적용되며, 기존 여행의 PIN을 변경하거나 덮어쓰지 않습니다. |
 | `SESSION_SECRET` | 기존 서버 서명 키를 사용하거나 32자 이상의 별도 무작위 키를 생성합니다. |
 | `TRAVEL_REDIS_REST_URL` | Upstash Redis HTTPS REST 엔드포인트. |
 | `TRAVEL_REDIS_REST_TOKEN` | 카운터 갱신이 가능한 Upstash REST 토큰. 기존 `UPSTASH_REDIS_REST_TOKEN`도 사용할 수 있습니다. |
 
 PIN 매핑, 서명 키, Redis 토큰은 비밀 환경변수로 저장합니다. 새 여행은 공개 목록에 바로 나타나며, 운영 환경에 PIN을 등록하고 재배포한 뒤 상세를 열 수 있습니다. 동일 PIN을 여러 여행에 재사용하면 사용자가 각각에 같은 PIN을 직접 입력할 수 있으므로 여행별로 다른 값을 사용합니다.
+
+기존 `TRAVEL_DETAIL_PINS`가 공개할 수 없는 Secret이고 원본을 찾을 수 없다면 해당 변수는 그대로 둡니다. 위 추가 매핑을 지원하는 코드를 배포하고, 새 여행만 `TRAVEL_DETAIL_ADDITIONAL_PINS`에 등록한 뒤 Production을 재배포합니다. 추가 매핑도 Secret으로 저장하며 실제 PIN은 소스에 기록하지 않습니다. 추가 변수의 JSON이 잘못되어도 기존 매핑에 있는 여행은 영향을 받지 않습니다.
 
 ### 앱 연동 설정과 검증
 

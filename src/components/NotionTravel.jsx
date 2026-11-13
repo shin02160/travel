@@ -22,6 +22,7 @@ const TAB_ICONS = {
   info: 'compass',
 };
 const COVERS = {
+  '4176d8c5-8de1-81e2-8644-f3b66935e8e4': 'destination-busan.png',
   '4136d8c5-8de1-81ce-a4c8-dbda8e993076': 'destination-shanghai.jpg',
   '4136d8c5-8de1-81f4-a070-e07878964af0': 'destination-guangzhou.jpg',
 };
