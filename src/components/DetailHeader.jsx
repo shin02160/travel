@@ -1,4 +1,4 @@
-import { useApp as useStore, getCurrentTrip } from '../store';
+import { useApp as useStore } from '../store';
 import { Icon } from '../icons';
 
 export default function DetailHeader({ trip }) {

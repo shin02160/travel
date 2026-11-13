@@ -1,0 +1,63 @@
+.destination-info { min-width: 0; padding-inline: 16px; }
+.destination-info p, .destination-info h2, .destination-info h3, .destination-info h4 { margin: 0; }
+.destination-info-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.destination-info-heading h2 { font-size: 1.25rem; }
+.destination-info-heading p, .destination-region > p, .destination-forecast-note { color: var(--reader-muted, #565e67); font-size: .875rem; }
+.destination-city-switch { display: flex; gap: 8px; flex-wrap: wrap; }
+.destination-info button { min-height: 44px; padding: 8px 13px; border-radius: 999px; font: inherit; cursor: pointer; }
+.destination-info button:disabled { opacity: .65; cursor: default; }
+.destination-city-switch button { background: #fff; border: 1px solid #d1d6da; color: #263342; }
+.destination-city-switch button[aria-pressed="true"] { border-color: #aa422c; color: #8e321f; background: #fff0e9; font-weight: 700; }
+.destination-info :focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.destination-weather { background: linear-gradient(145deg, #314358, #25364c 50%, #1c293b); color: #fff; border-radius: 19px; }
+.travel-reader .destination-weather p { color: #e9f1fa; }
+.destination-weather-inner { padding: 19px 18px 12px; }
+.destination-weather-top { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.destination-weather-top h3 { font-size: 1.125rem; }
+.destination-weather-top p:not(.destination-temp) { margin-top: 4px; }
+.destination-weather .destination-temp { font-size: clamp(2.5rem, 12vw, 4.3rem); line-height: 1.15; font-weight: 750; letter-spacing: -.06em; }
+.destination-weather-icon { font-size: clamp(2rem, 10vw, 3.8rem); }
+.destination-weather-status:not(:empty) { margin-block: 12px; color: #ffe7ad; }
+.destination-weather h4 { margin-block: 14px 6px; font-size: .95rem; }
+.destination-weather ul { list-style: none; margin: 0; padding: 0; }
+.destination-weather .destination-hourly { display: flex; overflow-x: auto; gap: 7px; padding: 4px 2px 10px; }
+.destination-hourly li { flex: 0 0 auto; display: grid; justify-items: center; gap: 5px; min-width: 125px; padding: 8px; border-radius: 12px; background: #ffffff12; }
+.destination-hourly time, .destination-hourly small { font-size: .75rem; }
+.destination-hourly [role="img"] { font-size: 1.25rem; }
+.destination-daily li { display: grid; grid-template-columns: max-content 22px 30px minmax(10px, 1fr) 30px; align-items: center; gap: 6px; min-height: 35px; border-bottom: 1px solid #ffffff20; font-size: .8125rem; }
+.destination-daily li > span:last-child { text-align: right; }
+.destination-daily li time, .destination-hourly time { font-variant-numeric: tabular-nums; }
+.destination-range { position: relative; height: 5px; border-radius: 99px; background: #ffffff30; }
+.destination-range i { position: absolute; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #82d6fc, #ffd17a); }
+.destination-weather-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; padding: 8px 18px 12px; border-top: 1px solid #ffffff25; font-size: .8rem; }
+.destination-weather-footer a { color: #d1eeff; text-decoration: underline; }
+.destination-weather-footer small { display: block; margin-top: 3px; }
+.travel-reader .destination-weather-footer button { border: 1px solid #ffffff75; background: #ffffff14; color: #fff; border-radius: 999px; }
+.travel-reader .destination-weather :is(button, a, ul):focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.destination-clothing { margin-block: 14px 22px; }
+.travel-reader .destination-clothing h4 { margin-top: 16px; }
+.destination-clothing-days { list-style: none; padding: 0; margin: 8px 0 0; }
+.destination-clothing-days li {
+  display: flex; flex-wrap: wrap; gap: 2px 12px; justify-content: space-between;
+  padding: 7px 0; border-top: 1px solid var(--border);
+}
+.destination-clothing-days time { font-variant-numeric: tabular-nums; }
+.travel-reader .destination-clothing button { margin-top: 10px; }
+.travel-reader .destination-region > p { margin: 4px 0 12px; }
+.destination-region-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.destination-region-card { min-width: 0; }
+.destination-region-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.travel-reader .destination-region-card > p { margin-top: 8px; white-space: pre-wrap; }
+.destination-region-card footer { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; font-size: .8125rem; }
+.destination-region-card footer a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; }
+.destination-info-badge { border-radius: 999px; padding: 3px 8px; background: #fff1d5; color: #6b4910; font-size: .75rem; }
+.destination-info-badge[data-status="공식 확인"] { color: #215c42; background: #e4f2e9; }
+.destination-info-badge[data-status="예상"] { color: #3d4857; background: #e7ecf3; }
+.destination-skeleton { height: 54px; margin-block: 10px; border-radius: 10px; background: currentColor; opacity: .1; }
+@media (min-width: 1024px) {
+  .destination-info { padding-inline: 28px; }
+  .destination-weather { border-radius: 22px; }
+  .destination-weather-inner { padding: 22px 22px 14px; }
+  .destination-weather-footer { padding-inline: 22px; }
+  .destination-region-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

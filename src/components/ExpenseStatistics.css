@@ -1,0 +1,67 @@
+.expense-stats-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  margin-block: 12px;
+  background: var(--primary-soft);
+  border-radius: var(--radius-control);
+}
+.travel-reader .expense-stats-tabs button { border-color: transparent; background: transparent; }
+.travel-reader .expense-stats-tabs button[aria-selected="true"] { background: var(--primary); color: #fff; }
+.expense-statistics { display: grid; gap: 14px; }
+.expense-stats-filters { display: grid; gap: 8px; justify-items: start; }
+.expense-stats-dates { display: flex; flex-wrap: wrap; gap: 8px 12px; width: 100%; }
+.expense-stats-dates label { display: grid; gap: 4px; max-width: 100%; }
+.expense-stats-dates input { padding-inline: 8px; max-width: 100%; }
+.expense-stats-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.expense-stats-kpis dt { color: var(--text-secondary); }
+.expense-stats-kpis dd { margin: 4px 0 0; font-size: clamp(17px, 2.4vw, 27px); font-weight: 700; font-variant-numeric: tabular-nums; }
+.expense-stats-kpis > :first-child dd { font-size: clamp(24px, 3vw, 32px); color: var(--primary-hover); }
+.travel-reader .expense-stats-note { padding: 10px 12px; background: var(--primary-soft); border-radius: var(--radius-control); color: var(--primary-hover); }
+.expense-stats-breakdown { display: grid; gap: 18px; align-items: center; margin-top: 12px; }
+.expense-stats-donut { width: min(100%, 210px); aspect-ratio: 1; position: relative; margin-inline: auto; }
+.expense-stats-donut svg { display: block; width: 100%; }
+.expense-stats-donut circle[role="button"] { cursor: pointer; }
+.expense-stats-donut circle:focus-visible { outline: 2px solid var(--primary); }
+.expense-stats-donut-label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding-inline: 22%;
+  text-align: center;
+  pointer-events: none;
+  line-height: 1.35;
+}
+.expense-stats-donut-label strong { font-size: 19px; font-variant-numeric: tabular-nums; }
+.expense-stats-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.expense-stats-table :is(th, td) { padding: 4px; text-align: end; border-bottom: 1px solid var(--border); }
+.expense-stats-table th:first-child { text-align: start; }
+.travel-reader .expense-stats-table button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  text-align: start;
+  border-color: transparent;
+  color: var(--primary-hover);
+}
+.expense-stats-swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.expense-stats-history-scope { margin-block: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.expense-stats-loading > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.expense-stats-loading span { height: 36px; border-radius: var(--radius-control); background: var(--primary-soft); }
+@media (max-width: 767px) {
+  .expense-stats-kpis > :first-child { grid-column: 1 / -1; }
+}
+@media (min-width: 768px) {
+  .expense-stats-breakdown { grid-template-columns: minmax(0, 210px) minmax(0, 1fr); }
+}
+@media (min-width: 1024px) {
+  .expense-stats-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

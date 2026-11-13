@@ -91,12 +91,11 @@ function TripCard({ trip }) {
 }
 
 export default function HomeScreen() {
-  const { trips, requireLogin, tripFilter, setTripFilter, setOverlay } = useStore(s => ({
+  const { trips, requireLogin, tripFilter, setTripFilter } = useStore(s => ({
     trips: s.trips,
     requireLogin: s.requireLogin,
     tripFilter: s.tripFilter,
     setTripFilter: s.setTripFilter,
-    setOverlay: s.setOverlay,
   }));
 
   const sorted = [...trips].sort((a, b) => new Date(a.startDate) - new Date(b.startDate));

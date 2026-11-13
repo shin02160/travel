@@ -1,16 +1,101 @@
-# React + Vite
+# Travel
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+My Travel Hub의 여행 정보를 읽는 React 앱입니다. 여행 목록은 공개하고, 상세는 여행별 숫자 4자리 PIN으로 잠급니다. 여행 데이터는 Notion에서 관리합니다.
 
-Currently, two official plugins are available:
+## 로컬 실행
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Node.js 24에서 아래 명령을 실행합니다.
 
-## React Compiler
+```sh
+npm ci
+npm run dev
+npm run lint
+npm run build
+npm test
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+테스트는 임시 인증 값을 생성하고 루프백에서 Vite HTTP 서버를 시작합니다. Notion 응답은 목을 사용하므로 테스트에 실제 토큰이 필요 없습니다.
 
-## Expanding the ESLint configuration
+## Vercel 배포
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Vercel에서 Vite 프레임워크, 빌드 명령 `npm run build`, 출력 폴더 `dist`를 사용합니다. Vite 개발 미들웨어와 Vercel Node 함수가 조회와 PIN 인증 API를 제공합니다. 정적 호스팅이나 `vite preview`에서는 API가 실행되지 않습니다.
+
+## P1 Notion My Travel Hub 읽기 전용 연동
+
+생성, 수정, 삭제, 체크 상태 변경, 영수증 첨부는 모두 Notion에서 합니다. 앱에서는 조회와 필터링을 제공하며, 오늘 일정 상세에서 해당 일정의 Notion 원본을 열 수 있습니다.
+
+### 오늘 일정 대시보드
+
+홈은 여행 현지 날짜를 기준으로 진행 중인 여행 또는 다음 예정 여행을 표시합니다. 오늘 일정 탭에서는 여행 기간 안에서 날짜를 이동하고, PIN으로 열린 상세 화면에서 해당 날짜의 일정과 다음 시작 일정을 확인할 수 있습니다.
+
+| 화면 | 확인한 Notion 필드 |
+| --- | --- |
+| 활성 여행과 날짜 경계 | 여행 마스터의 `여행명`, `여행지`, `여행기간`, `상태` |
+| 타임라인과 상세 | 여행 일정의 `일정명`, `일시`(시작·종료·시간대), `구분`, `장소`, `진행상태`, `메모`, `지도 URL` 및 일정 페이지 링크 |
+| 관련 예약 | 여행 일정의 `관련 예약` 관계 및 같은 여행 예약 관리의 `예약명`, `예약상태` |
+
+여행 마스터에는 시간대 속성이 없어 기존 상하이 여행은 `Asia/Shanghai`, 마카오·광저우 여행은 `Asia/Macau`를 기본값으로 매핑합니다. 새 여행은 기본 시간대를 추가하기 전까지 화면에서 시간대 확인이 필요하다고 표시합니다. 일정의 명시된 시간대 또는 오프셋은 기본값보다 우선합니다. 종일 여부와 별도 주소 속성은 확인한 스키마에 없으므로 날짜만 저장된 일정은 시간 미정으로 표시하고 장소는 원본 문자열을 사용합니다.
+
+### 확인한 데이터 소스
+
+My Travel Hub의 DB 8개를 조회해 아래 구조를 확인했습니다. 모든 하위 DB에는 여행 마스터를 가리키는 `여행` 관계가 있습니다.
+
+| DB | 앱에서 읽을 항목 |
+| --- | --- |
+| 여행 마스터 | 여행명, 여행지, 여행기간, 상태, 메모, 총예산·총지출·잔여예산 |
+| 여행 일정 | 일정명, 일시, 구분, 장소, 진행상태 |
+| 예약 관리 | 예약명, 예약유형, 예약상태, 이용일, 결제상태 |
+| 예산 관리 | 예산항목, 분류, 예산 KRW, 사용금액, 잔액 |
+| 지출 내역 | 지출명, 분류, 결제일, 결제자, 정산여부, 통화, 현지 금액, 원화 확정액, 집계 금액 |
+| 영수증 관리 | 영수증명, 처리상태, 연결된 지출, Notion 페이지 링크 |
+| 여행 체크리스트 | 할 일, 분류, 상태, 단계, 기한 |
+| 쇼핑 리스트 | 품목, 분류, 유형, 상태, 우선순위, 구매방법, 매장, 위치, 추천품목, 구매예정일, 단계, 기한, 메모 |
+
+여행 메모와 일정 장소는 여행 마스터와 일정에서 읽고, 정보가 비어 있으면 빈 상태를 표시합니다. 예산과 지출 합계는 Notion의 KRW 롤업·수식 값을 기준으로 표시합니다. 현지 금액과 통화는 별도로 표시하고 P0의 JPY 환율로 다시 계산하지 않습니다.
+
+### 공개 목록과 여행별 PIN
+
+1. `GET /api/trips`는 로그인 없이 모든 여행의 ID, 여행명, 여행지, 여행기간, 상태만 반환합니다. 메모와 예산 등 상세 데이터는 별도 API에서 제공합니다.
+2. `POST /api/trips/:tripId`는 해당 여행의 PIN만 확인합니다. 일치하면 여행별로 서명된 30분짜리 HttpOnly 쿠키를 발급합니다. 운영 쿠키에는 Secure가 적용됩니다. PIN을 바꾸거나 제거하면 기존 쿠키도 무효화됩니다.
+3. `GET /api/trips/:tripId`는 해당 여행의 유효한 쿠키가 필요합니다. 여행 마스터 소속을 확인하고, 하위 데이터는 `여행` 관계가 정확히 해당 여행을 가리키는 경우만 반환합니다. 상세 지출에는 결제자와 정산여부를 포함합니다. 응답은 저장되지 않도록 `Cache-Control: private, no-store`를 사용하며 예약번호와 영수증 이미지 URL은 제외합니다.
+4. 모든 서버 인스턴스가 환경과 여행별로 같은 Redis 카운터를 사용합니다. 첫 입력부터 1시간 동안 성공·실패 합계 10회를 허용하며, Redis를 사용할 수 없으면 새 PIN 인증은 실패합니다. 한 여행의 제한이 다른 여행에 적용되지는 않습니다. 4자리 PIN은 단순 열람 제한이며, 해당 여행의 시도 한도가 소진되면 올바른 PIN을 가진 사용자도 만료까지 기다려야 합니다.
+
+### PIN과 요청 제한 설정
+
+`.env.example`을 참고해 로컬에서는 `.env.local`에, Vercel에서는 적용할 Preview 또는 Production의 서버 환경변수에 아래 값을 등록합니다.
+
+| 환경변수 | 설정 |
+| --- | --- |
+| `TRAVEL_DETAIL_PINS` | Notion **여행 페이지 ID**를 키로, 4자리 PIN 문자열을 값으로 둔 JSON. 예시 `{"00000000-0000-4000-8000-000000000001":"0427"}`. 하이픈이 있는 소문자 UUID를 사용합니다. |
+| `TRAVEL_DETAIL_ADDITIONAL_PINS` | 기존 Secret 값을 확인할 수 없을 때 새 여행만 추가하는 선택 JSON 매핑. 형식은 `TRAVEL_DETAIL_PINS`와 같습니다. 기존 매핑에 없는 여행에만 적용되며, 기존 여행의 PIN을 변경하거나 덮어쓰지 않습니다. |
+| `SESSION_SECRET` | 기존 서버 서명 키를 사용하거나 32자 이상의 별도 무작위 키를 생성합니다. |
+| `TRAVEL_REDIS_REST_URL` | Upstash Redis HTTPS REST 엔드포인트. |
+| `TRAVEL_REDIS_REST_TOKEN` | 카운터 갱신이 가능한 Upstash REST 토큰. 기존 `UPSTASH_REDIS_REST_TOKEN`도 사용할 수 있습니다. |
+
+PIN 매핑, 서명 키, Redis 토큰은 비밀 환경변수로 저장합니다. 새 여행은 공개 목록에 바로 나타나며, 운영 환경에 PIN을 등록하고 재배포한 뒤 상세를 열 수 있습니다. 동일 PIN을 여러 여행에 재사용하면 사용자가 각각에 같은 PIN을 직접 입력할 수 있으므로 여행별로 다른 값을 사용합니다.
+
+기존 `TRAVEL_DETAIL_PINS`가 공개할 수 없는 Secret이고 원본을 찾을 수 없다면 해당 변수는 그대로 둡니다. 위 추가 매핑을 지원하는 코드를 배포하고, 새 여행만 `TRAVEL_DETAIL_ADDITIONAL_PINS`에 등록한 뒤 Production을 재배포합니다. 추가 매핑도 Secret으로 저장하며 실제 PIN은 소스에 기록하지 않습니다. 추가 변수의 JSON이 잘못되어도 기존 매핑에 있는 여행은 영향을 받지 않습니다.
+
+### 앱 연동 설정과 검증
+
+1. My Travel Hub에 연결할 Notion 내부 통합에 콘텐츠 읽기 권한을 부여합니다. 통합에 아래 데이터 소스의 상위 DB 접근을 부여합니다.
+2. 로컬에서는 `.env.local`에, 배포 환경에서는 Vercel 서버 환경변수에 `NOTION_TRAVEL_TOKEN`을 등록합니다. 다음 키에는 각 DB의 **데이터 소스 ID**를 넣습니다. Notion API에서 DB를 조회하면 응답의 `data_sources`에서 확인할 수 있습니다.
+
+   | 환경변수 | Notion DB |
+   | --- | --- |
+   | `NOTION_TRAVEL_TRIPS_SOURCE_ID` | 여행 마스터 |
+   | `NOTION_TRAVEL_SCHEDULE_SOURCE_ID` | 여행 일정 |
+   | `NOTION_TRAVEL_BOOKINGS_SOURCE_ID` | 예약 관리 |
+   | `NOTION_TRAVEL_BUDGETS_SOURCE_ID` | 예산 관리 |
+   | `NOTION_TRAVEL_EXPENSES_SOURCE_ID` | 지출 내역 |
+   | `NOTION_TRAVEL_RECEIPTS_SOURCE_ID` | 영수증 관리 |
+   | `NOTION_TRAVEL_CHECKLIST_SOURCE_ID` | 여행 체크리스트 |
+   | `NOTION_TRAVEL_SHOPPING_SOURCE_ID` | 쇼핑 리스트. 미설정 시 기존 여행 상세는 열리며 쇼핑 탭에 연결 안내가 표시됩니다. |
+   | `NOTION_TRAVEL_INFO_SOURCE_ID` | 여행지 정보 (선택). 기존 데이터 소스 ID: `846412f2-7bc7-499b-b36c-fd84b79a991e`. 미설정이어도 날씨는 조회됩니다. |
+
+3. 체크리스트와 쇼핑 리스트는 별도의 DB에서 조회합니다. 두 DB 모두 각 항목의 `여행` 관계에 여행 마스터의 여행 한 건을 연결합니다. DB에서 속성명을 바꾸면 서버 매핑을 같이 갱신해야 합니다. 계산값을 Notion이 제공하지 않으면 화면에는 대시를 표시합니다.
+4. 목 테스트로 공개 목록, PIN 검증·만료·여행 간 격리, 시도 제한 장애, 쓰기 요청 거부, Notion 관계 검증과 페이지네이션을 확인합니다. 실제 배포에서 PIN 설정 후 두 여행의 상세가 각각 열리는지, Notion 변경이 새로고침에 반영되는지 확인합니다.
+
+`정보` 탭은 여행 PIN을 확인한 뒤 선택한 여행과 도시의 지역 정보를 읽습니다. Vercel에 데이터 소스 ID를 설정하고 기존 Notion 통합에 해당 DB의 읽기 권한이 있는지 확인합니다. 앱에서 Notion에 쓰지 않습니다.
+
+날씨는 앱 서버에서 도시 대표 좌표로 [Open-Meteo](https://open-meteo.com/en/docs)에 요청합니다. Vercel은 도시별 응답을 5분간 캐시합니다. 배포 전 [무료 API 사용 조건](https://open-meteo.com/en/terms)을 확인하고 운영 중 호출량과 오류를 확인합니다.

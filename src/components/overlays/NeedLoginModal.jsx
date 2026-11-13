@@ -10,11 +10,21 @@ export default function NeedLoginModal() {
   }));
   const [pw, setPw] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
 
-  const handleConfirm = () => {
-    const ok = login(pw);
-    if (!ok) { setError('비밀번호가 올바르지 않습니다.'); setPw(''); }
+  const handleConfirm = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const ok = await login(pw);
+      if (!ok) { setError('비밀번호가 올바르지 않습니다.'); setPw(''); }
+    } catch (err) {
+      setError(err?.message || '인증 서버에 연결할 수 없습니다.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -52,7 +62,7 @@ export default function NeedLoginModal() {
           border: 'none', borderRadius: 12, cursor: 'pointer',
           color: 'var(--ink-body)', fontSize: 14, fontWeight: 600, fontFamily: 'var(--ff-sans)',
         }}>취소</button>
-        <button onClick={handleConfirm} style={{
+        <button onClick={handleConfirm} disabled={busy} style={{
           flex: 1, padding: '13px', background: 'var(--primary)',
           border: 'none', borderRadius: 12, cursor: 'pointer',
           color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'var(--ff-sans)',

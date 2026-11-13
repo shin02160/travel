@@ -1,6 +1,4 @@
 // Lucide-style stroke SVG icons
-const icon = (paths, size = 18) => ({ size, paths });
-
 export function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 1.8 }) {
   const defs = {
     plane: ['M2.5 19 L12 3 L21.5 19 L12 15.5 Z', 'M12 15.5 L12 3'],

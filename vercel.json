@@ -1,0 +1,9 @@
+{
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": { "api/trips.js": { "maxDuration": 20 } },
+  "rewrites": [
+    { "source": "/api/trips/:tripId", "destination": "/api/trips?tripId=:tripId" }
+  ]
+}

@@ -9,13 +9,11 @@ const NAV = [
 ];
 
 export default function BottomNav() {
-  const { screen, overlay, setScreen, setOverlay, openTrip, currentTripId } = useStore(s => ({
+  const { screen, overlay, setScreen, setOverlay } = useStore(s => ({
     screen: s.screen,
     overlay: s.overlay,
     setScreen: s.setScreen,
     setOverlay: s.setOverlay,
-    openTrip: s.openTrip,
-    currentTripId: s.currentTripId,
   }));
 
   const handleNav = (id) => {

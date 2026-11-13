@@ -66,11 +66,12 @@ function CheckItem({ item, onToggle, onDelete, loggedIn, editingId, editText, on
 }
 
 export default function CheckTab() {
-  const { checks, addedChecks, deletedChecks, editedChecks, toggleCheck, deleteCheckItem, editCheckItem, setOverlay, setAddCheckCat, loggedIn } = useStore(s => ({
+  const { checks, addedChecks, deletedChecks, editedChecks, checkTemplate, toggleCheck, deleteCheckItem, editCheckItem, setOverlay, setAddCheckCat, loggedIn } = useStore(s => ({
     checks: s.checks,
     addedChecks: s.addedChecks,
     deletedChecks: s.deletedChecks,
     editedChecks: s.editedChecks,
+    checkTemplate: s.checkTemplate,
     toggleCheck: s.toggleCheck,
     deleteCheckItem: s.deleteCheckItem,
     editCheckItem: s.editCheckItem,
@@ -82,15 +83,16 @@ export default function CheckTab() {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
 
-  const checkItems = computeCheckItems(checks, addedChecks, deletedChecks, editedChecks);
+  const checkItems = computeCheckItems(checks, addedChecks, deletedChecks, editedChecks, checkTemplate);
   const allItems = Object.values(checkItems).flat();
   const done = allItems.filter(i => i.checked).length;
   const total = allItems.length;
   const pct = total ? Math.round(done / total * 100) : 0;
 
   const handleAddClick = (cat) => {
-    setAddCheckCat(cat);
+    if (!loggedIn) { setOverlay('login'); return; }
     setOverlay('addCheck');
+    setAddCheckCat(cat);
   };
 
   const handleStartEdit = (id, currentText) => {
@@ -157,8 +159,8 @@ export default function CheckTab() {
               <CheckItem
                 key={item.id}
                 item={item}
-                onToggle={toggleCheck}
-                onDelete={deleteCheckItem}
+                onToggle={id => loggedIn ? toggleCheck(id) : setOverlay('login')}
+                onDelete={id => loggedIn ? deleteCheckItem(id) : setOverlay('login')}
                 loggedIn={loggedIn}
                 editingId={editingId}
                 editText={editText}

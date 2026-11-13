@@ -17,7 +17,7 @@ export default function CreateTripSheet() {
   const labelStyle = { fontSize: 12, fontWeight: 600, color: 'var(--ink-sub)', marginBottom: 5, display: 'block' };
 
   const handleSubmit = () => {
-    if (!form.name || !form.startDate || !form.endDate) return;
+    if (!form.name || !form.startDate || !form.endDate || form.endDate < form.startDate) return;
     const nights = Math.ceil((new Date(form.endDate) - new Date(form.startDate)) / 86400000);
     addTrip({
       ...form,

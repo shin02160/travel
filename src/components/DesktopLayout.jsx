@@ -119,7 +119,7 @@ export default function DesktopLayout({ overlays }) {
               <TabBar />
             </div>
             <div style={{ padding: '0' }}>
-              <TabContent />
+              <TabContent key={currentTripId} />
             </div>
           </>
         ) : (

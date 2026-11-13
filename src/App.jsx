@@ -20,6 +20,8 @@ import AISheet from './components/overlays/AISheet';
 import MapSheet from './components/overlays/MapSheet';
 import SettingsSheet from './components/overlays/SettingsSheet';
 import MenuSheet from './components/overlays/MenuSheet';
+import AddBudgetItemSheet from './components/overlays/AddBudgetItemSheet';
+import AddBookingSheet from './components/overlays/AddBookingSheet';
 import AddCheckSheet from './components/overlays/AddCheckSheet';
 import EditEventSheet from './components/overlays/EditEventSheet';
 import EditExpenseSheet from './components/overlays/EditExpenseSheet';
@@ -45,6 +47,8 @@ export function OverlayManager() {
     settings: SettingsSheet,
     menu: MenuSheet,
     addCheck: AddCheckSheet,
+    addBooking: AddBookingSheet,
+    addBudgetItem: AddBudgetItemSheet,
     editEvent: EditEventSheet,
     editExpense: EditExpenseSheet,
   };
@@ -70,7 +74,7 @@ function MobileApp() {
           <>
             {trip && <DetailHeader trip={trip} />}
             <TabBar />
-            <TabContent />
+            <TabContent key={currentTripId} />
           </>
         )}
       </div>
