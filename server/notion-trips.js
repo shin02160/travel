@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { tripPinConfig, tripSessionExpiry, unlockTrip } from './trip-pin.js';
 import { citiesForTrip, INFO_CATEGORIES } from '../src/destinationCities.js';
-import { fetchPhoto, galleryPhotos, sendPhoto } from './trip-photos.js';
+import { fetchPhoto, galleryPhotos, selectCover, sendPhoto } from './trip-photos.js';
 
 const ID = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const SECTIONS = {
@@ -273,8 +273,10 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   const photoRequest = itemSections.length === 1 && itemSection === 'photos' && !itemIds.length && !cityIds.length &&
     (!photoParams || (photoIds.length === 1 && ID.test(photoIds[0]) &&
       photoFiles.length === 1 && /^(0|[1-9][0-9]{0,5})$/.test(photoFiles[0])));
+  const coverRequest = itemSections.length === 1 && itemSection === 'cover' &&
+    [...url.searchParams.keys()].every(key => key === 'section' || key === 'tripId');
   const otherItemRequest = !photoParams && (infoRequest || (!cityIds.length && (packingRequest || recordRequest)));
-  if (itemRequest && (!tripId || !(photoRequest || otherItemRequest))) {
+  if (itemRequest && (!tripId || !(coverRequest || photoRequest || otherItemRequest))) {
     return respond(res, 400, { error: 'invalid_item_request' });
   }
   const methods = tripId && !itemRequest ? ['GET', 'POST'] : ['GET'];
@@ -283,11 +285,12 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
     return respond(res, 405, { error: 'method_not_allowed' });
   }
 
-  const config = tripId ? tripPinConfig(tripId, env) : null;
+  const needsPin = Boolean(tripId && !coverRequest);
+  const config = needsPin ? tripPinConfig(tripId, env) : null;
   if (req.method === 'POST') return unlockTrip(req, res, respond, tripId, config, env, fetcher, behindVercel);
-  const expiresAt = tripId ? tripSessionExpiry(req, tripId, config) : 0;
-  if (tripId && !config) return respond(res, 403, { error: 'trip_pin_not_configured' });
-  if (tripId && !expiresAt) return respond(res, 401, { error: 'trip_pin_required' });
+  const expiresAt = needsPin ? tripSessionExpiry(req, tripId, config) : 0;
+  if (needsPin && !config) return respond(res, 403, { error: 'trip_pin_not_configured' });
+  if (needsPin && !expiresAt) return respond(res, 401, { error: 'trip_pin_required' });
 
   const token = env.NOTION_TRAVEL_TOKEN?.trim();
   const sourceKeys = env.NOTION_TRAVEL_SHOPPING_SOURCE_ID?.trim()
@@ -299,12 +302,13 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   const photoSource = env.NOTION_TRAVEL_PHOTOS_SOURCE_ID?.trim().toLowerCase();
   const invalidOptionalSource = source => source && (!ID.test(source) || Object.values(sources).includes(source));
   if (!token || !ID.test(sources.trips) || (tripId && (
-    photoRequest ? (invalidOptionalSource(photoSource) || (photoSource && photoSource === infoSource)) :
+    photoRequest || coverRequest ? (invalidOptionalSource(photoSource) || (photoSource && photoSource === infoSource)) :
     infoRequest ? invalidOptionalSource(infoSource) :
       (sourceKeys.some(key => !ID.test(sources[key])) || new Set(Object.values(sources)).size !== sourceKeys.length)
   ))) {
     return respond(res, 503, { error: 'notion_not_configured' });
   }
+  if (coverRequest && !photoSource) return respond(res, 404, { error: 'photo_not_found' });
 
   const sendData = body => expiresAt * 1000 > Date.now()
     ? respond(res, 200, { expiresAt, ...body })
@@ -327,6 +331,20 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
     const trip = await readPage(tripId);
     if (!belongsTo(trip, sources.trips) || trip.id !== tripId) {
       return respond(res, 404, { error: 'trip_not_found' });
+    }
+
+    if (coverRequest) {
+      const pages = await reader.query(photoSource, tripId);
+      const cover = selectCover(pages, tripId, propertyValue);
+      if (!cover) return respond(res, 404, { error: 'photo_not_found' });
+      const image = await fetchPhoto(async () => {
+        // Reapply selection if a signed attachment expires during the request.
+        const latest = await reader.query(photoSource, tripId);
+        const selected = selectCover(latest, tripId, propertyValue);
+        return selected?.photo.id === cover.photo.id ? selected.page : null;
+      }, cover.index, fetcher, signal, { publicCover: true, initialPage: cover.page });
+      if (!image) return respond(res, 404, { error: 'photo_not_found' });
+      return await sendPhoto(res, image);
     }
 
     if (photoRequest) {

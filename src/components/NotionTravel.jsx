@@ -108,7 +108,7 @@ function Mark({ name, size = 18 }) {
   return <span className="travel-icon" aria-hidden="true"><Icon name={name} size={size} /></span>;
 }
 
-function Cover({ trip, className = '', photo }) {
+function Cover({ trip, className = '', photoSrc }) {
   const file = COVERS[trip.id];
   return (
     <div className={`travel-cover ${className}`} aria-hidden="true">
@@ -117,7 +117,7 @@ function Cover({ trip, className = '', photo }) {
         <img src={`${import.meta.env.BASE_URL}${file}`} alt="" width="1200" height="600"
           loading="lazy" decoding="async" onError={event => { event.currentTarget.hidden = true; }} />
       )}
-      {photo?.src && <img key={photo.id} src={photo.src} alt="" width="1200" height="600" decoding="async"
+      {photoSrc && <img key={photoSrc} src={photoSrc} alt="" width="1200" height="600" loading="lazy" decoding="async"
         onError={event => { event.currentTarget.hidden = true; }} />}
     </div>
   );
@@ -136,7 +136,7 @@ function TripCard({ trip, onSelect }) {
   return (
     <li>
       <article className="travel-trip-card">
-        <Cover trip={trip} />
+        <Cover trip={trip} photoSrc={`${tripPath(trip.id)}?section=cover`} />
         <div className="travel-trip-copy">
           <div className="travel-item-heading">
             <h3>
@@ -474,7 +474,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
   return (
     <>
       <header className="travel-hero">
-        <Cover trip={data.trip} photo={tab !== 'photos' ? coverPhoto : null} />
+        <Cover trip={data.trip} photoSrc={tab !== 'photos' ? coverPhoto?.src : null} />
         <div className="travel-hero-copy">
           <div className="travel-item-heading">
             <h1 lang={LATIN_TITLE.test(data.trip.title) ? 'en' : undefined}>{data.trip.title}</h1>

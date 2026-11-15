@@ -78,7 +78,7 @@ test('gallery filters photos by trip, sorts attachments, and only proxies authen
   const cover = photo('cover', 1, '2026-11-15', true, [tripId]);
   const tied = { ...cover, id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', properties: { ...cover.properties, 사진명: title('tied') } };
   const unordered = photo('unordered', null, '2026-11-13', true, [tripId]);
-  const other = photo('other', 0, '2026-11-13', true, [otherTripId]);
+  const other = photo('other', 0, '2026-11-13', true, [otherTripId], [file(signed('foreign'))]);
   const shared = photo('shared', 0, '2026-11-13', true, [tripId, otherTripId]);
   const external = photo('external', null, '2026-11-13', false, [tripId], [
     { type: 'external', external: { url: 'https://example.org/private.png' } },
@@ -108,6 +108,34 @@ test('gallery filters photos by trip, sorts attachments, and only proxies authen
   assert.equal((await readGallery(endpoint, query([earlier, external]))).body.coverId, `${earlier.id}:0`);
   assert.equal((await readGallery(endpoint, query([external]))).body.photos[0].src, null);
   assert.deepEqual((await readGallery(endpoint, query([]))).body, { expiresAt, photos: [], coverId: null, configured: true });
+
+  const publicCoverPath = `${path}?section=cover`;
+  assert.equal((await request(`${publicCoverPath}&photoId=${earlier.id}&file=0`, never, { config })).statusCode, 400);
+  assert.equal((await request(publicCoverPath, never, { config, method: 'POST' })).statusCode, 405);
+  assert.equal((await request(publicCoverPath, query([shared, other]), { config })).statusCode, 404);
+
+  const { default: sharp } = await import('sharp');
+  const original = await sharp({ create: { width: 1200, height: 600, channels: 3, background: '#168' } })
+    .withExif({ IFD0: { Artist: 'Private test metadata' } }).jpeg().toBuffer();
+  assert.ok((await sharp(original).metadata()).exif);
+  const publicBytes = [];
+  const publicHeaders = {};
+  const output = new Writable({ write(chunk, _encoding, done) { publicBytes.push(chunk); done(); } });
+  output.setHeader = (name, value) => { publicHeaders[name] = value; };
+  const publicFixture = async (url, init) => {
+    if (url.startsWith('https://api.notion.com/')) return query([other, earlier, cover])(url, init);
+    assert.equal(url, signed('secret')); // The designated cover wins over the earlier and foreign photos.
+    assert.equal(init.redirect, 'error');
+    assert.equal(init.headers, undefined);
+    return new Response(original, { headers: { 'Content-Type': 'image/jpeg' } });
+  };
+  await handleTrips({ method: 'GET', url: publicCoverPath, headers: {} }, output, config, publicFixture);
+  assert.equal(output.statusCode, 200);
+  assert.equal(publicHeaders['Content-Type'], 'image/jpeg');
+  assert.equal(publicHeaders['Cache-Control'], 'private, no-store');
+  assert.equal(publicHeaders.Location, undefined);
+  const thumbnail = await sharp(Buffer.concat(publicBytes)).metadata();
+  assert.deepEqual([thumbnail.width, thumbnail.height, thumbnail.exif], [800, 400, undefined]);
 
   const readPhotoPage = page => async url => {
     if (url.endsWith(`/pages/${tripId}`)) return Response.json(trip);

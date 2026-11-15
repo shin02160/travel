@@ -4,6 +4,7 @@ import { datePart } from '../src/todaySchedule.js';
 
 const IMAGE_TYPES = new Set(['image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp']);
 const HEIC_TYPES = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
+const PUBLIC_COVER_EDGE = 800;
 const NOTION_BUCKETS = ['prod-files-secure', 'secure.notion-static.com'];
 const S3 = /^s3(?:[.-][a-z]{2}(?:-[a-z0-9]+)+)?\.amazonaws\.com$/;
 
@@ -27,7 +28,7 @@ function filesFor(page) {
   return property?.type === 'files' && Array.isArray(property.files) ? property.files : [];
 }
 
-export function galleryPhotos(pages, tripId, value) {
+function sortedPhotos(pages, tripId, value) {
   const rows = pages.flatMap(page => {
     const p = page.properties;
     const files = filesFor(page);
@@ -46,27 +47,37 @@ export function galleryPhotos(pages, tripId, value) {
           isCover: value(p['대표 사진']) === true,
           displayOrder: Number.isFinite(displayOrder) ? displayOrder : null,
         },
-        pageId: page.id,
+        page,
         index,
       };
     });
   });
 
-  rows.sort((a, b) =>
+  return rows.sort((a, b) =>
     (a.photo.displayOrder ?? Infinity) - (b.photo.displayOrder ?? Infinity) ||
     (a.photo.shotAt ?? '9999-99-99').localeCompare(b.photo.shotAt ?? '9999-99-99') ||
-    a.pageId.localeCompare(b.pageId) || a.index - b.index);
+    a.page.id.localeCompare(b.page.id) || a.index - b.index);
+}
 
-  const photos = rows.map(({ photo }) => photo);
-  const coverId = photos.find(photo => photo.src && photo.isCover)?.id ?? photos.find(photo => photo.src)?.id ?? null;
+function coverRow(rows) {
+  return rows.find(({ photo }) => photo.src && photo.isCover) ?? rows.find(({ photo }) => photo.src);
+}
+
+export function galleryPhotos(pages, tripId, value) {
+  const rows = sortedPhotos(pages, tripId, value);
   return {
-    coverId, photos,
+    coverId: coverRow(rows)?.photo.id ?? null,
+    photos: rows.map(({ photo }) => photo),
   };
 }
 
-export async function fetchPhoto(loadPage, index, fetcher, signal) {
+export function selectCover(pages, tripId, value) {
+  return coverRow(sortedPhotos(pages, tripId, value));
+}
+
+export async function fetchPhoto(loadPage, index, fetcher, signal, { publicCover = false, initialPage } = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const page = await loadPage();
+    const page = attempt === 0 && initialPage ? initialPage : await loadPage();
     const attachment = page && filesFor(page)[index];
     const file = hostedPhoto(attachment);
     if (!file) return null;
@@ -74,10 +85,14 @@ export async function fetchPhoto(loadPage, index, fetcher, signal) {
     const response = await fetcher(file.url, { redirect: 'error', signal });
     const type = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
     if (response.status === 200 && response.body) {
-      if (IMAGE_TYPES.has(type)) return { response, type };
-      if (HEIC_TYPES.has(type) || (type === 'application/octet-stream' && /\.hei[cf]$/i.test(attachment.name))) {
-        const { heicToJpeg } = await import('./heic-photo.js');
-        const bytes = await heicToJpeg(response);
+      const heic = HEIC_TYPES.has(type) || (type === 'application/octet-stream' && /\.hei[cf]$/i.test(attachment.name));
+      const webImage = IMAGE_TYPES.has(type);
+      if (webImage && !publicCover) return { response, type };
+      if (heic || webImage) {
+        const { heicToJpeg, coverToJpeg } = await import('./photo-render.js');
+        const bytes = heic
+          ? await heicToJpeg(response, publicCover ? PUBLIC_COVER_EDGE : undefined)
+          : await coverToJpeg(response, PUBLIC_COVER_EDGE);
         return bytes ? { response: new Response(bytes), type: 'image/jpeg' } : null;
       }
     }

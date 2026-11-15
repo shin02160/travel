@@ -5,7 +5,7 @@ const MAX_FILE_BYTES = 24 * 1024 * 1024;
 const MAX_PIXELS = 50_000_000;
 const MAX_EDGE = 2048;
 
-async function readFile(response) {
+async function readImage(response) {
   const reader = response.body.getReader();
   try {
     if (Number(response.headers.get('content-length')) > MAX_FILE_BYTES) return null;
@@ -23,8 +23,8 @@ async function readFile(response) {
   }
 }
 
-function resize({ width, height, data }) {
-  const scale = MAX_EDGE / Math.max(width, height);
+function resize({ width, height, data }, maxEdge) {
+  const scale = maxEdge / Math.max(width, height);
   if (scale >= 1) return { width, height, data };
   const w = Math.max(1, Math.round(width * scale));
   const h = Math.max(1, Math.round(height * scale));
@@ -43,15 +43,27 @@ function resize({ width, height, data }) {
   return { width: w, height: h, data: pixels };
 }
 
-export async function heicToJpeg(response) {
-  const buffer = await readFile(response);
+export async function heicToJpeg(response, maxEdge = MAX_EDGE) {
+  const buffer = await readImage(response);
   if (!buffer) return null;
   const images = await decode.all({ buffer });
   try {
     const image = images[0];
     if (image.width <= 0 || image.height <= 0 || image.width * image.height > MAX_PIXELS) return null;
-    return jpeg.encode(resize(await image.decode()), 85).data;
+    return jpeg.encode(resize(await image.decode(), maxEdge), 85).data;
   } finally {
     images.dispose();
   }
+}
+
+export async function coverToJpeg(response, maxEdge) {
+  const buffer = await readImage(response);
+  if (!buffer) return null;
+  const { default: sharp } = await import('sharp');
+  return sharp(buffer, { limitInputPixels: MAX_PIXELS })
+    .autoOrient()
+    .resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true })
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality: 82 })
+    .toBuffer();
 }
