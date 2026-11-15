@@ -92,6 +92,7 @@ PIN 매핑, 서명 키, Redis 토큰은 비밀 환경변수로 저장합니다. 
    | `NOTION_TRAVEL_CHECKLIST_SOURCE_ID` | 여행 체크리스트 |
    | `NOTION_TRAVEL_SHOPPING_SOURCE_ID` | 쇼핑 리스트. 미설정 시 기존 여행 상세는 열리며 쇼핑 탭에 연결 안내가 표시됩니다. |
    | `NOTION_TRAVEL_INFO_SOURCE_ID` | 여행지 정보 (선택). 기존 데이터 소스 ID: `846412f2-7bc7-499b-b36c-fd84b79a991e`. 미설정이어도 날씨는 조회됩니다. |
+   | `NOTION_TRAVEL_PHOTOS_SOURCE_ID` | 여행 사진 (선택). 데이터 소스 ID: `4196d8c5-8de1-8173-abdf-000b5b435da0`. |
 
 3. 체크리스트와 쇼핑 리스트는 별도의 DB에서 조회합니다. 두 DB 모두 각 항목의 `여행` 관계에 여행 마스터의 여행 한 건을 연결합니다. DB에서 속성명을 바꾸면 서버 매핑을 같이 갱신해야 합니다. 계산값을 Notion이 제공하지 않으면 화면에는 대시를 표시합니다.
 4. 목 테스트로 공개 목록, PIN 검증·만료·여행 간 격리, 시도 제한 장애, 쓰기 요청 거부, Notion 관계 검증과 페이지네이션을 확인합니다. 실제 배포에서 PIN 설정 후 두 여행의 상세가 각각 열리는지, Notion 변경이 새로고침에 반영되는지 확인합니다.
@@ -99,3 +100,11 @@ PIN 매핑, 서명 키, Redis 토큰은 비밀 환경변수로 저장합니다. 
 `정보` 탭은 여행 PIN을 확인한 뒤 선택한 여행과 도시의 지역 정보를 읽습니다. Vercel에 데이터 소스 ID를 설정하고 기존 Notion 통합에 해당 DB의 읽기 권한이 있는지 확인합니다. 앱에서 Notion에 쓰지 않습니다.
 
 날씨는 앱 서버에서 도시 대표 좌표로 [Open-Meteo](https://open-meteo.com/en/docs)에 요청합니다. Vercel은 도시별 응답을 5분간 캐시합니다. 배포 전 [무료 API 사용 조건](https://open-meteo.com/en/terms)을 확인하고 운영 중 호출량과 오류를 확인합니다.
+
+### 여행 사진
+
+기존 Notion 읽기 통합에 여행 사진 DB를 공유하고 `NOTION_TRAVEL_PHOTOS_SOURCE_ID`를 설정합니다. 여행 사진 DB에서 `여행` 관계를 한 건만 연결하고 `사진` 속성에 JPEG, PNG, WebP, GIF, AVIF 또는 HEIC를 직접 첨부합니다. HEIC는 원본을 Notion에 보존하고 화면 표시용 JPEG로 변환합니다. HEIC 변환 한도는 파일당 24 MiB·5천만 픽셀이며 표시용 이미지의 긴 변은 최대 2048px입니다. 외부 링크 파일은 갤러리에서 이미지 대신 안내를 표시합니다. 여러 파일을 첨부하면 같은 캡션으로 각각 표시됩니다.
+
+`표시 순서`가 있는 사진을 먼저 정렬하고, 같은 순서에서는 촬영일과 레코드 ID를 사용합니다. 대표 사진을 지정하지 않으면 표시할 수 있는 첫 사진을 씁니다. 사진 목록과 이미지 요청에 각각 여행 PIN 세션이 필요하며, 서버는 원본 Notion 파일 URL을 브라우저에 전달하지 않습니다. 파일 URL이 만료됐거나 파일 서버가 401·403·404를 반환하면 Notion에서 다시 조회합니다.
+
+브라우저에서 예제 데이터로 확인하려면 개발 서버를 `npm run dev -- --host 127.0.0.1 --port 4179 --strictPort`로 실행한 뒤 `playwright-cli open about:blank --browser=chrome` 및 `playwright-cli run-code --filename=qa/travel-gallery.playwright.mjs`를 실행합니다. 실제 Notion에 연결할 때는 사진을 한 장 등록하고 해당 여행의 PIN으로 상세와 이미지를 확인합니다.

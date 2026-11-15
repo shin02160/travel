@@ -5,21 +5,24 @@ import { formatDateTime, formatLocalTimestamp } from '../dateDisplay.js';
 import { calculateExpenseStatistics, expenseCategory } from '../expenseStatistics.js';
 import { compareBookingUseDate, sortByDisplayOrder } from '../displayOrder.js';
 import { readTripViewState, saveTripViewState } from '../tripViewState.js';
+import { sortTripList } from '../tripListOrder.js';
+import { useTripPhotos } from '../useTripPhotos.js';
 import ExpenseStatistics from './ExpenseStatistics.jsx';
 import DestinationInfoTab from './DestinationInfoTab.jsx';
 import TodayDashboard from './TodayDashboard.jsx';
 import StatusChips from './StatusChips.jsx';
+import TravelGallery from './TravelGallery.jsx';
 import './NotionTravel.css';
 
 const TABS = {
   overview: '개요', today: '오늘 일정', schedule: '일정', bookings: '예약', budgets: '예산',
   expenses: '지출', receipts: '영수증', checklist: '체크리스트', packing: '간편 체크리스트', shopping: '쇼핑 리스트',
-  info: '정보',
+  photos: '사진', info: '정보',
 };
 const TAB_ICONS = {
   overview: 'compass', today: 'calendar', schedule: 'calendar', bookings: 'plane', budgets: 'wallet',
   expenses: 'currency', receipts: 'fileText', checklist: 'check', packing: 'check', shopping: 'wallet',
-  info: 'compass',
+  photos: 'image', info: 'compass',
 };
 const COVERS = {
   '4176d8c5-8de1-81e2-8644-f3b66935e8e4': 'destination-busan.png',
@@ -105,7 +108,7 @@ function Mark({ name, size = 18 }) {
   return <span className="travel-icon" aria-hidden="true"><Icon name={name} size={size} /></span>;
 }
 
-function Cover({ trip, className = '' }) {
+function Cover({ trip, className = '', photo }) {
   const file = COVERS[trip.id];
   return (
     <div className={`travel-cover ${className}`} aria-hidden="true">
@@ -114,6 +117,8 @@ function Cover({ trip, className = '' }) {
         <img src={`${import.meta.env.BASE_URL}${file}`} alt="" width="1200" height="600"
           loading="lazy" decoding="async" onError={event => { event.currentTarget.hidden = true; }} />
       )}
+      {photo?.src && <img key={photo.id} src={photo.src} alt="" width="1200" height="600" decoding="async"
+        onError={event => { event.currentTarget.hidden = true; }} />}
     </div>
   );
 }
@@ -408,7 +413,9 @@ function ExpenseTabs({ view, onChange }) {
   );
 }
 
-function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, lastRead }) {
+function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinRequired, now, lastRead }) {
+  const gallery = useTripPhotos(data.trip.id);
+  const coverPhoto = gallery.result?.data?.photos.find(photo => photo.id === gallery.result.data.coverId);
   const [view, setView] = useState(() => {
     try {
       return readTripViewState(data.trip.id, window.sessionStorage);
@@ -467,7 +474,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
   return (
     <>
       <header className="travel-hero">
-        <Cover trip={data.trip} />
+        <Cover trip={data.trip} photo={tab !== 'photos' ? coverPhoto : null} />
         <div className="travel-hero-copy">
           <div className="travel-item-heading">
             <h1 lang={LATIN_TITLE.test(data.trip.title) ? 'en' : undefined}>{data.trip.title}</h1>
@@ -496,7 +503,8 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
           </section>
         )}
         {tab === 'info' && <DestinationInfoTab key={`${data.trip.id}:${lastRead}`} trip={data.trip} now={now} />}
-        {!['overview', 'today', 'packing', 'info'].includes(tab) && (
+        {tab === 'photos' && <TravelGallery {...gallery} onPinRequired={onPinRequired} />}
+        {!['overview', 'today', 'packing', 'photos', 'info'].includes(tab) && (
           <section className="travel-section" aria-label={TABS[tab]}>
             <header className="travel-section-heading">
               <div><h2>{TABS[tab]}</h2>{!shoppingUnconfigured && !showStatistics && <p>{historyItems.length}개 항목</p>}</div>
@@ -762,12 +770,13 @@ export default function NotionTravel() {
             <TodayHome trips={current.data.trips} now={now} navigate={navigate} />
             {current.data.trips.length === 0 && <p className="travel-empty">등록된 여행이 없습니다.</p>}
             <ul className="travel-card-grid travel-reader-list">
-              {current.data.trips.map(trip => <TripCard key={trip.id} trip={trip} onSelect={navigate} />)}
+              {sortTripList(current.data.trips).map(trip => <TripCard key={trip.id} trip={trip} onSelect={navigate} />)}
             </ul>
           </section>
         )}
         {current?.data?.trip && (
           <TripDetail key={tripId} data={current.data} tab={tab} selectedDate={selectedDate} now={now} lastRead={lastRead?.time}
+            onPinRequired={refresh}
             onSelectTab={next => navigate(tripId, next, true, selectedDate)}
             onDateChange={date => navigate(tripId, 'today', true, date)} />
         )}

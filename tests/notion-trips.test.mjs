@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { Writable } from 'node:stream';
 import { handleTrips } from '../server/notion-trips.js';
 
 const tripId = randomUUID();
@@ -55,6 +56,98 @@ assert.equal(auth.statusCode, 200);
 const cookie = auth.headers['Set-Cookie'].split(';')[0];
 const expiresAt = Number(cookie.split('=')[1].split('.')[0]);
 const read = (url, fetcher) => request(url, fetcher, { headers: { cookie } });
+
+test('gallery filters photos by trip, sorts attachments, and only proxies authenticated Notion images', async () => {
+  const source = randomUUID();
+  const config = { ...env, NOTION_TRAVEL_PHOTOS_SOURCE_ID: source };
+  const headers = { cookie };
+  const endpoint = `${path}?section=photos`;
+  const never = () => assert.fail('unexpected upstream request');
+  const signed = token => `https://s3.us-west-2.amazonaws.com/prod-files-secure/image.png?signature=${token}`;
+  const file = (url, expiry = Date.now() + 60000) =>
+    ({ type: 'file', file: { url, expiry_time: new Date(expiry).toISOString() } });
+  const photo = (name, order, date, isCover, ids, files = [file(signed('secret'))]) => ({
+    ...row('shopping', {
+      사진명: title(name), 여행: relation(...ids), '표시 순서': number(order),
+      촬영일: { type: 'date', date: { start: date } }, '대표 사진': { type: 'checkbox', checkbox: isCover },
+      사진: { type: 'files', files },
+    }),
+    parent: { type: 'data_source_id', data_source_id: source },
+  });
+  const earlier = photo('earlier', 1, '2026-11-14', false, [tripId], [file(signed('one')), file(signed('two'))]);
+  const cover = photo('cover', 1, '2026-11-15', true, [tripId]);
+  const tied = { ...cover, id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', properties: { ...cover.properties, 사진명: title('tied') } };
+  const unordered = photo('unordered', null, '2026-11-13', true, [tripId]);
+  const other = photo('other', 0, '2026-11-13', true, [otherTripId]);
+  const shared = photo('shared', 0, '2026-11-13', true, [tripId, otherTripId]);
+  const external = photo('external', null, '2026-11-13', false, [tripId], [
+    { type: 'external', external: { url: 'https://example.org/private.png' } },
+  ]);
+  const assetPath = id => `${endpoint}&photoId=${id}&file=0`;
+  const readGallery = (url, fixture) => request(url, fixture, { headers, config });
+
+  assert.equal((await request(endpoint, never, { config })).statusCode, 401);
+  assert.equal((await request(assetPath(cover.id), never, { config })).statusCode, 401);
+  assert.equal((await readGallery(assetPath(cover.id) + '&file=1', never)).statusCode, 400);
+  assert.equal((await readGallery(endpoint.replace(tripId, otherTripId), never)).statusCode, 401);
+  assert.equal((await request(endpoint, never, { headers, config, method: 'POST' })).statusCode, 405);
+
+  const query = pages => async (url, init) => {
+    if (url.endsWith(`/pages/${tripId}`)) return Response.json(trip);
+    assert.ok(url.endsWith(`/data_sources/${source}/query`));
+    assert.deepEqual(JSON.parse(init.body).filter, { property: '여행', relation: { contains: tripId } });
+    return list(pages);
+  };
+  const result = await readGallery(endpoint, query([unordered, tied, shared, other, cover, earlier]));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.headers['Cache-Control'], 'private, no-store');
+  assert.deepEqual(result.body.photos.map(photo => photo.title), ['earlier', 'earlier', 'cover', 'tied', 'unordered']);
+  assert.equal(result.body.coverId, `${cover.id}:0`);
+  assert.equal(result.body.photos[2].src, assetPath(cover.id));
+  assert.doesNotMatch(JSON.stringify(result.body), /signature|amazonaws/);
+  assert.equal((await readGallery(endpoint, query([earlier, external]))).body.coverId, `${earlier.id}:0`);
+  assert.equal((await readGallery(endpoint, query([external]))).body.photos[0].src, null);
+  assert.deepEqual((await readGallery(endpoint, query([]))).body, { expiresAt, photos: [], coverId: null, configured: true });
+
+  const readPhotoPage = page => async url => {
+    if (url.endsWith(`/pages/${tripId}`)) return Response.json(trip);
+    assert.ok(url.endsWith(`/pages/${page.id}`));
+    return Response.json(page);
+  };
+  assert.equal((await readGallery(assetPath(other.id), readPhotoPage(other))).statusCode, 404);
+  assert.equal((await readGallery(assetPath(shared.id), readPhotoPage(shared))).statusCode, 404);
+  assert.equal((await readGallery(assetPath(external.id), readPhotoPage(external))).statusCode, 404);
+
+  for (const expiredBeforeRequest of [false, true]) {
+    let pageReads = 0;
+    const imageReads = [];
+    const chunks = [];
+    const output = new Writable({ write(chunk, _encoding, done) { chunks.push(chunk); done(); } });
+    output.setHeader = (name, value) => { output.headers ??= {}; output.headers[name] = value; };
+    const fixture = async (url, init) => {
+      if (url.endsWith(`/pages/${tripId}`)) return Response.json(trip);
+      if (url.endsWith(`/pages/${cover.id}`)) {
+        const current = ++pageReads === 1
+          ? file(signed('old'), expiredBeforeRequest ? Date.now() - 1000 : undefined)
+          : file(signed('new'));
+        return Response.json({ ...cover, properties: { ...cover.properties, 사진: { type: 'files', files: [current] } } });
+      }
+      imageReads.push(url);
+      assert.equal(init.redirect, 'error');
+      assert.equal(init.headers, undefined);
+      if (url === signed('old')) return new Response(null, { status: 403 });
+      assert.equal(url, signed('new'));
+      return new Response('image bytes', { headers: { 'Content-Type': 'image/png' } });
+    };
+    await handleTrips({ method: 'GET', url: assetPath(cover.id), headers }, output, config, fixture);
+    assert.equal(pageReads, 2);
+    assert.deepEqual(imageReads, expiredBeforeRequest ? [signed('new')] : [signed('old'), signed('new')]);
+    assert.equal(output.statusCode, 200);
+    assert.equal(output.headers['Cache-Control'], 'private, no-store');
+    assert.equal(output.headers.Location, undefined);
+    assert.equal(Buffer.concat(chunks).toString(), 'image bytes');
+  }
+});
 
 test('destination cards enforce PIN, trip and city boundaries and sanitize sources', async () => {
   const id = '4136d8c5-8de1-81f4-a070-e07878964af0';

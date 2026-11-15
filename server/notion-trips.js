@@ -1,6 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { tripPinConfig, tripSessionExpiry, unlockTrip } from './trip-pin.js';
 import { citiesForTrip, INFO_CATEGORIES } from '../src/destinationCities.js';
+import { fetchPhoto, galleryPhotos, sendPhoto } from './trip-photos.js';
 
 const ID = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const SECTIONS = {
@@ -259,14 +260,21 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   const itemIds = url.searchParams.getAll('itemId');
   const itemSections = url.searchParams.getAll('section');
   const cityIds = url.searchParams.getAll('city');
-  const itemRequest = itemIds.length > 0 || itemSections.length > 0 || cityIds.length > 0;
+  const photoIds = url.searchParams.getAll('photoId');
+  const photoFiles = url.searchParams.getAll('file');
+  const photoParams = photoIds.length > 0 || photoFiles.length > 0;
+  const itemRequest = itemIds.length > 0 || itemSections.length > 0 || cityIds.length > 0 || photoParams;
   const itemSection = itemSections[0];
   const packingRequest = itemSections.length === 1 && itemSection === 'packing' && itemIds.length === 0;
   const infoRequest = itemSections.length === 1 && itemSection === 'info' && itemIds.length === 0 &&
     cityIds.length === 1 && citiesForTrip(tripId).some(city => city.id === cityIds[0]);
   const recordRequest = itemIds.length === 1 && ID.test(itemIds[0]) &&
     itemSections.length === 1 && ['checklist', 'shopping'].includes(itemSection);
-  if (itemRequest && (!tripId || !(infoRequest || (cityIds.length === 0 && (packingRequest || recordRequest))))) {
+  const photoRequest = itemSections.length === 1 && itemSection === 'photos' && !itemIds.length && !cityIds.length &&
+    (!photoParams || (photoIds.length === 1 && ID.test(photoIds[0]) &&
+      photoFiles.length === 1 && /^(0|[1-9][0-9]{0,5})$/.test(photoFiles[0])));
+  const otherItemRequest = !photoParams && (infoRequest || (!cityIds.length && (packingRequest || recordRequest)));
+  if (itemRequest && (!tripId || !(photoRequest || otherItemRequest))) {
     return respond(res, 400, { error: 'invalid_item_request' });
   }
   const methods = tripId && !itemRequest ? ['GET', 'POST'] : ['GET'];
@@ -288,8 +296,11 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
     key, env[`NOTION_TRAVEL_${key.toUpperCase()}_SOURCE_ID`]?.trim().toLowerCase(),
   ]));
   const infoSource = env.NOTION_TRAVEL_INFO_SOURCE_ID?.trim().toLowerCase();
+  const photoSource = env.NOTION_TRAVEL_PHOTOS_SOURCE_ID?.trim().toLowerCase();
+  const invalidOptionalSource = source => source && (!ID.test(source) || Object.values(sources).includes(source));
   if (!token || !ID.test(sources.trips) || (tripId && (
-    infoRequest ? (infoSource && (!ID.test(infoSource) || Object.values(sources).includes(infoSource))) :
+    photoRequest ? (invalidOptionalSource(photoSource) || (photoSource && photoSource === infoSource)) :
+    infoRequest ? invalidOptionalSource(infoSource) :
       (sourceKeys.some(key => !ID.test(sources[key])) || new Set(Object.values(sources)).size !== sourceKeys.length)
   ))) {
     return respond(res, 503, { error: 'notion_not_configured' });
@@ -299,7 +310,12 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
     ? respond(res, 200, { expiresAt, ...body })
     : respond(res, 401, { error: 'trip_pin_required' });
 
-  const reader = notionReader(token, fetcher, AbortSignal.timeout(15000));
+  const signal = AbortSignal.timeout(15000);
+  const reader = notionReader(token, fetcher, signal);
+  const readPage = id => reader.readPage(id).catch(error => {
+    if (error instanceof NotionError && error.status === 404) return null;
+    throw error;
+  });
   try {
     if (!tripId) {
       const trips = await reader.query(sources.trips);
@@ -308,12 +324,28 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
       });
     }
 
-    const trip = await reader.readPage(tripId).catch(error => {
-      if (error instanceof NotionError && error.status === 404) return null;
-      throw error;
-    });
+    const trip = await readPage(tripId);
     if (!belongsTo(trip, sources.trips) || trip.id !== tripId) {
       return respond(res, 404, { error: 'trip_not_found' });
+    }
+
+    if (photoRequest) {
+      if (!photoParams) {
+        const pages = photoSource ? await reader.query(photoSource, tripId) : [];
+        return sendData({ ...galleryPhotos(pages, tripId, propertyValue), configured: Boolean(photoSource) });
+      }
+      const photoId = photoIds[0].toLowerCase();
+      if (!photoSource) return respond(res, 404, { error: 'photo_not_found' });
+      const image = await fetchPhoto(async () => {
+        const page = await readPage(photoId);
+        return belongsTo(page, photoSource) && page.id === photoId && belongsToTrip(page, tripId) ? page : null;
+      }, Number(photoFiles[0]), fetcher, signal);
+      if (!image) return respond(res, 404, { error: 'photo_not_found' });
+      if (expiresAt * 1000 <= Date.now()) {
+        await image.response.body.cancel();
+        return respond(res, 401, { error: 'trip_pin_required' });
+      }
+      return await sendPhoto(res, image);
     }
 
     if (infoRequest) {
@@ -417,6 +449,7 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
 
     return sendData({ trip: project(trip, TRIP_FIELDS), sections });
   } catch (error) {
+    if (res.headersSent || res.destroyed) return;
     const status = error instanceof NotionError && error.status === 429 ? 503 : 502;
     return respond(res, status, { error: 'notion_unavailable' });
   }
