@@ -472,6 +472,38 @@ test('item body requires the trip PIN and rejects items outside the exact travel
   }
 });
 
+test('booking expansion returns selected details for the unlocked trip without private booking properties', async () => {
+  const itemId = randomUUID();
+  const endpoint = `${path}?section=bookings&itemId=${itemId}`;
+  const neverFetch = () => assert.fail('unexpected upstream request');
+  assert.equal((await request(endpoint, neverFetch)).statusCode, 401);
+  assert.equal((await request(endpoint, neverFetch, { method: 'POST' })).statusCode, 405);
+  const richText = plain_text => ({ type: 'rich_text', rich_text: [{ plain_text }] });
+  const attrs = {
+    여행: relation(tripId), 예약처: richText('호텔'), 장소: richText('현지 상호명'),
+    '숙소 주소': richText('현지 주소'), '장소 주소': richText(' 현지 주소 '),
+    예약금액: number(0), 통화: { type: 'select', select: { name: 'CNY' } },
+    취소기한: { type: 'date', date: { start: '2026-12-03T18:00:00+08:00' } },
+    '취소·환불 조건': richText('기한 전 무료 취소'),
+    예약번호: richText('secret-booking-number'), 메모: richText('secret-memo'),
+    '예약 URL': { type: 'url', url: 'https://example.org/secret-link' },
+  };
+  const fetchItem = item => async url => {
+    if (url.endsWith(`/pages/${tripId}`)) return Response.json(trip);
+    assert.ok(url.endsWith(`/pages/${itemId}`));
+    return Response.json(item);
+  };
+  const res = await read(endpoint, fetchItem(row('bookings', attrs, itemId)));
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.headers['Cache-Control'], 'private, no-store');
+  assert.deepEqual(res.body, { expiresAt, sourceId: itemId, fields: {
+    예약처: '호텔', 장소: '현지 상호명', '숙소 주소': '현지 주소', 통화: 'CNY', 예약금액: 0,
+    취소기한: '2026-12-03T18:00:00+08:00', '취소·환불 조건': '기한 전 무료 취소',
+  } });
+  assert.equal((await read(endpoint, fetchItem(row('bookings', { 여행: relation(otherTripId) }, itemId)))).statusCode, 404);
+  assert.equal((await read(endpoint, fetchItem(row('checklist', attrs, itemId)))).statusCode, 404);
+});
+
 test('item body reads nested Notion checkboxes and paginates without exposing embedded pages', async () => {
   const itemId = randomUUID();
   const headingId = randomUUID();

@@ -14,6 +14,7 @@ const SECTIONS = {
   shopping: ['품목', '분류', '유형', '상태', '우선순위', '구매방법', '매장', '위치', '추천품목', '구매예정일', '단계', '기한', '메모'],
 };
 const TRIP_FIELDS = ['여행명', '여행지', '여행기간', '상태', '메모', '총예산', '총지출', '잔여예산'];
+const BOOKING_DETAIL_FIELDS = ['예약처', '장소', '숙소 주소', '장소 주소', '통화', '예약금액', '취소기한', '취소·환불 조건'];
 const REQUIRED_SOURCES = ['trips', ...Object.keys(SECTIONS).filter(key => key !== 'shopping')];
 const NOTION_API = 'https://api.notion.com/v1';
 const ITEM_BLOCK_TYPES = new Set([
@@ -67,6 +68,18 @@ function project(page, [title, ...fields]) {
     title: propertyValue(page.properties[title]) || '제목 없음',
     fields: Object.fromEntries(fields.map(name => [name, propertyValue(page.properties[name])])),
   };
+}
+
+function bookingDetails(page) {
+  const details = {};
+  for (const name of BOOKING_DETAIL_FIELDS) {
+    const value = propertyValue(page.properties[name]);
+    if (name === '예약금액' ? Number.isFinite(value) : typeof value === 'string' && value.trim()) {
+      details[name] = typeof value === 'string' ? value.trim() : value;
+    }
+  }
+  if (details['숙소 주소'] === details['장소 주소']) delete details['장소 주소'];
+  return details;
 }
 
 function savedMapUrl(property) {
@@ -269,7 +282,7 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   const infoRequest = itemSections.length === 1 && itemSection === 'info' && itemIds.length === 0 &&
     cityIds.length === 1 && citiesForTrip(tripId).some(city => city.id === cityIds[0]);
   const recordRequest = itemIds.length === 1 && ID.test(itemIds[0]) &&
-    itemSections.length === 1 && ['checklist', 'shopping'].includes(itemSection);
+    itemSections.length === 1 && ['bookings', 'checklist', 'shopping'].includes(itemSection);
   const photoRequest = itemSections.length === 1 && itemSection === 'photos' && !itemIds.length && !cityIds.length &&
     (!photoParams || (photoIds.length === 1 && ID.test(photoIds[0]) &&
       photoFiles.length === 1 && /^(0|[1-9][0-9]{0,5})$/.test(photoFiles[0])));
@@ -409,13 +422,11 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
       const itemId = itemIds[0].toLowerCase();
       const source = sources[itemSection];
       if (!source) return respond(res, 404, { error: 'item_not_found' });
-      const item = await reader.readPage(itemId).catch(error => {
-        if (error instanceof NotionError && error.status === 404) return null;
-        throw error;
-      });
+      const item = await readPage(itemId);
       if (!belongsTo(item, source) || item.id !== itemId || !belongsToTrip(item, tripId)) {
         return respond(res, 404, { error: 'item_not_found' });
       }
+      if (itemSection === 'bookings') return sendData({ fields: bookingDetails(item), sourceId: itemId });
       return sendData(await reader.readItemBody(itemId));
     }
 

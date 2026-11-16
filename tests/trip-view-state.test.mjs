@@ -14,7 +14,7 @@ test('trip screen preferences survive reload and are isolated by trip', () => {
   state.expensePeriod = { start: '2026-12-05', end: '2026-12-06' };
   state.filters.expenses = { query: '식비', category: '식비' };
   state.expenseDrilldown = true;
-  state.opened = ['checklist:4136d8c5-8de1-810a-8b3b-e0553575f3b3'];
+  state.opened = ['checklist:4136d8c5-8de1-810a-8b3b-e0553575f3b3', 'bookings:4136d8c5-8de1-810a-8b3b-e0553575f3b3'];
   saveTripViewState('first', state, storage);
   assert.deepEqual(readTripViewState('first', storage), state);
   assert.equal(readTripViewState('second', storage).expenseView, 'history');

@@ -39,7 +39,7 @@ const FILTER_FIELDS = {
   shopping: '분류',
 };
 const WON_FIELDS = new Set(['총예산', '총지출', '잔여예산', '예산 KRW', '사용금액', '잔액', '원화 확정액', '집계 금액']);
-const DATE_FIELDS = new Set(['여행기간', '일시', '이용일', '결제일', '구매예정일', '기한']);
+const DATE_FIELDS = new Set(['여행기간', '일시', '이용일', '결제일', '구매예정일', '기한', '취소기한']);
 const STATUS_FIELDS = {
   bookings: ['예약상태', '결제상태'],
   expenses: ['정산여부'],
@@ -312,7 +312,7 @@ function ItemBlocks({ blocks }) {
   );
 }
 
-function ChecklistItemBody({ tripId, itemId, section }) {
+function RecordDetails({ tripId, itemId, section }) {
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState(null);
 
@@ -341,7 +341,16 @@ function ChecklistItemBody({ tripId, itemId, section }) {
     </>
   );
 
-  const { blocks, partial, sourceId = itemId } = result.data;
+  const { fields = {}, blocks, partial, sourceId = itemId } = result.data;
+  if (section === 'bookings') {
+    return (
+      <>
+        {Object.keys(fields).length ? <Fields fields={fields} /> : <p>등록된 세부 정보가 없습니다.</p>}
+        <p className="travel-booking-source"><a href={`https://www.notion.so/${sourceId.replaceAll('-', '')}`}
+          target="_blank" rel="noopener noreferrer">Notion에서 예약 원본 보기</a></p>
+      </>
+    );
+  }
   return (
     <>
       {blocks.length > 0 && <ItemBlocks blocks={blocks} />}
@@ -354,7 +363,7 @@ function ChecklistItemBody({ tripId, itemId, section }) {
 
 function RecordCard({ row, tab, tripId, statusFields, open, onToggle }) {
   const bodyId = useId();
-  const expandable = tab === 'checklist' || tab === 'shopping';
+  const expandable = tab === 'bookings' || tab === 'checklist' || tab === 'shopping';
   const complete = expandable && row.fields.상태 === '완료';
   const statuses = Object.fromEntries(statusFields.map(field => [field, settlementLabel(row.fields[field])]));
 
@@ -373,7 +382,7 @@ function RecordCard({ row, tab, tripId, statusFields, open, onToggle }) {
       </div>
       <Fields fields={row.fields} />
       {expandable && <div id={bodyId} className="travel-item-body" hidden={!open}>
-        {open && <ChecklistItemBody tripId={tripId} itemId={row.id} section={tab} />}
+        {open && <RecordDetails tripId={tripId} itemId={row.id} section={tab} />}
       </div>}
     </li>
   );
@@ -498,7 +507,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
             <header className="travel-section-heading"><h2>간편 체크리스트</h2></header>
             <p className="travel-packing-note">Notion의 공통 준비물 간편 체크 페이지입니다. 체크 상태는 Notion에서 변경해 주세요.</p>
             <div className="travel-reader-card">
-              <ChecklistItemBody key={lastRead} tripId={data.trip.id} section="packing" />
+              <RecordDetails key={lastRead} tripId={data.trip.id} section="packing" />
             </div>
           </section>
         )}
