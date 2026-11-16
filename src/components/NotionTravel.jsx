@@ -382,7 +382,7 @@ function RecordCard({ row, tab, tripId, statusFields, open, onToggle }) {
       </div>
       <Fields fields={row.fields} />
       {expandable && <div id={bodyId} className="travel-item-body" hidden={!open}>
-        {open && <RecordDetails tripId={tripId} itemId={row.id} section={tab} />}
+        {open && <RecordDetails tripId={tripId} itemId={row.id} section={row.sourceSection ?? tab} />}
       </div>}
     </li>
   );
@@ -392,8 +392,11 @@ function RecordList({ rows, tab, tripId, opened, onToggle }) {
   const statusFields = STATUS_FIELDS[tab] ?? [];
   return (
     <ul className="travel-card-grid travel-reader-list">
-      {rows.map(row => <RecordCard key={row.id} row={row} tab={tab} tripId={tripId} statusFields={statusFields}
-        open={opened.includes(`${tab}:${row.id}`)} onToggle={() => onToggle(`${tab}:${row.id}`)} />)}
+      {rows.map(row => {
+        const itemKey = `${row.sourceSection ?? tab}:${row.id}`;
+        return <RecordCard key={row.id} row={row} tab={tab} tripId={tripId} statusFields={statusFields}
+          open={opened.includes(itemKey)} onToggle={() => onToggle(itemKey)} />;
+      })}
     </ul>
   );
 }

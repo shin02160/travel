@@ -362,6 +362,12 @@ test('detail verifies each data source and scopes every section to exactly one t
   const receipt = row('receipts', { 영수증명: title('교통 영수증'), 여행: relation(tripId),
     '관련 지출': relation(expense.id, randomUUID()), '증빙 이미지': title('private') });
   const checklistItem = row('checklist', { '할 일': title('여권 확인'), 여행: relation(tripId) });
+  const checklistShopping = row('checklist', {
+    '할 일': title('택배 수령'), 여행: relation(tripId), 분류: { type: 'select', select: { name: '쇼핑' } },
+    유형: { type: 'select', select: { name: '준비·배송' } },
+    구매예정일: { type: 'date', date: { start: '2026-12-06' } },
+  });
+  const foreignChecklistShopping = row('checklist', { ...checklistShopping.properties, 여행: relation(otherTripId) });
   const shoppingItem = row('shopping', {
     품목: title('기념품'), 여행: relation(tripId), 분류: { type: 'select', select: { name: '캐릭터·굿즈' } },
     구매예정일: { type: 'date', date: { start: '2026-12-05' } },
@@ -375,7 +381,7 @@ test('detail verifies each data source and scopes every section to exactly one t
       row('bookings', { 예약명: title('truncated'), 여행: { ...relation(tripId), has_more: true } }),
       row('schedule', { 예약명: title('wrong source'), 여행: relation(tripId) })],
     schedule: [event, unsafeMap], expenses: [expense, settledExpense, olderExpense], receipts: [receipt],
-    checklist: [checklistItem, shoppingItem],
+    checklist: [checklistItem, shoppingItem, checklistShopping, foreignChecklistShopping],
     shopping: [shoppingItem, checklistItem, row('shopping', { 품목: title('다른 여행 물건'), 여행: relation(otherTripId) })],
   };
   const calls = [];
@@ -421,11 +427,16 @@ test('detail verifies each data source and scopes every section to exactly one t
   assert.deepEqual(res.body.sections.expenses.map(item => item.fields.정산여부), [false, true, null]);
   assert.equal(res.body.sections.receipts[0].fields['관련 지출'], '교통비');
   assert.deepEqual(res.body.sections.checklist.map(item => item.id), [checklistItem.id]);
-  assert.deepEqual(res.body.sections.shopping.map(item => item.id), [shoppingItem.id]);
+  assert.deepEqual(res.body.sections.shopping.map(item => item.id), [shoppingItem.id, checklistShopping.id]);
   assert.equal(res.body.sections.shopping[0].title, '기념품');
   assert.equal(res.body.sections.shopping[0].fields.분류, '캐릭터·굿즈');
   assert.equal(res.body.sections.shopping[0].fields.구매예정일, '2026-12-05');
   assert.equal(res.body.sections.shopping[0].fields['관련 지출'], undefined);
+  const movedShopping = res.body.sections.shopping[1];
+  assert.equal(movedShopping.title, '택배 수령');
+  assert.equal(movedShopping.sourceSection, 'checklist');
+  assert.equal(movedShopping.fields.유형, '준비·배송');
+  assert.equal(movedShopping.fields.구매예정일, '2026-12-06');
   assert.doesNotMatch(JSON.stringify(res.body), /private|예약번호|증빙 이미지/);
 
   const foreign = await read(`/api/trips?tripId=${tripId}`, async () => Response.json(row('schedule', {}, tripId)));
@@ -444,6 +455,19 @@ test('missing shopping configuration leaves existing trip sections available', a
   assert.ok(calls.every(url => !url.includes(sources.shopping)));
   assert.deepEqual(res.body.sections.checklist, []);
   assert.equal(res.body.sections.shopping, null);
+
+  const legacyItem = row('checklist', {
+    '할 일': title('현지 쇼핑'), 여행: relation(tripId), 분류: { type: 'select', select: { name: '쇼핑' } },
+  });
+  const fallback = await request(path, async url => {
+    if (url.endsWith(`/pages/${tripId}`)) return Response.json(trip);
+    return list(url.endsWith(`/${sources.checklist}/query`) ? [legacyItem] : []);
+  }, { config, headers: { cookie } });
+  assert.equal(fallback.statusCode, 200);
+  assert.deepEqual(fallback.body.sections.checklist, []);
+  assert.deepEqual(fallback.body.sections.shopping.map(({ id, sourceSection }) => [id, sourceSection]), [
+    [legacyItem.id, 'checklist'],
+  ]);
 
   const duplicate = await request(path, () => assert.fail('duplicate data source reached upstream'), {
     headers: { cookie }, config: { ...env, NOTION_TRAVEL_SHOPPING_SOURCE_ID: sources.checklist },

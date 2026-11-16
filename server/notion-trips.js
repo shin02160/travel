@@ -431,6 +431,7 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
     }
 
     const sections = {};
+    const checklistShopping = [];
     for (const [key, fields] of Object.entries(SECTIONS)) {
       if (key === 'shopping' && !sources.shopping) {
         sections.shopping = null;
@@ -439,7 +440,14 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
       const sorts = key === 'expenses' ? [{ timestamp: 'created_time', direction: 'ascending' }] : undefined;
       const pages = await reader.query(sources[key], tripId, sorts);
       const expenses = key === 'receipts' ? new Map(sections.expenses.map(row => [row.id, row.title])) : null;
-      sections[key] = pages.map(page => {
+      sections[key] = pages.flatMap(page => {
+        if (key === 'checklist' && propertyValue(page.properties.분류) === '쇼핑') {
+          checklistShopping.push({
+            ...project(page, ['할 일', ...SECTIONS.shopping.slice(1)]),
+            sourceSection: 'checklist',
+          });
+          return [];
+        }
         const row = project(page, fields);
         if (key === 'schedule') Object.assign(row, scheduleDetails(page));
         if (key === 'bookings' || key === 'expenses') {
@@ -467,9 +475,11 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
             ? related.relation.map(entry => expenses.get(entry.id)).filter(Boolean).join(', ')
             : null;
         }
-        return row;
+        return [row];
       });
     }
+
+    if (checklistShopping.length) sections.shopping = [...(sections.shopping ?? []), ...checklistShopping];
 
     const bookingIds = new Set(sections.bookings.map(row => row.id));
     for (const event of sections.schedule) {
