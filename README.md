@@ -68,6 +68,7 @@ My Travel Hub의 DB 8개를 조회해 아래 구조를 확인했습니다. 모�
 | --- | --- |
 | `TRAVEL_DETAIL_PINS` | Notion **여행 페이지 ID**를 키로, 4자리 PIN 문자열을 값으로 둔 JSON. 예시 `{"00000000-0000-4000-8000-000000000001":"0427"}`. 하이픈이 있는 소문자 UUID를 사용합니다. |
 | `TRAVEL_DETAIL_ADDITIONAL_PINS` | 기존 Secret 값을 확인할 수 없을 때 새 여행만 추가하는 선택 JSON 매핑. 형식은 `TRAVEL_DETAIL_PINS`와 같습니다. 기존 매핑에 없는 여행에만 적용되며, 기존 여행의 PIN을 변경하거나 덮어쓰지 않습니다. |
+| `TRAVEL_DETAIL_PIN_<여행ID>` | 두 JSON 매핑의 원본을 모를 때 새 여행에만 사용하는 선택 Secret. 여행 페이지 UUID의 하이픈을 제거하고 대문자로 바꾼 값을 접미사로 사용하며, 값은 4자리 숫자 문자열입니다. 기존 두 매핑이 우선하므로 다른 여행 설정을 덮어쓰지 않습니다. |
 | `SESSION_SECRET` | 기존 서버 서명 키를 사용하거나 32자 이상의 별도 무작위 키를 생성합니다. |
 | `TRAVEL_REDIS_REST_URL` | Upstash Redis HTTPS REST 엔드포인트. |
 | `TRAVEL_REDIS_REST_TOKEN` | 카운터 갱신이 가능한 Upstash REST 토큰. 기존 `UPSTASH_REDIS_REST_TOKEN`도 사용할 수 있습니다. |
