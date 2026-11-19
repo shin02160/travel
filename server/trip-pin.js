@@ -25,7 +25,8 @@ export function tripPinConfig(tripId, env) {
       pin = pins[tripId];
     } else {
       const additional = JSON.parse(env.TRAVEL_DETAIL_ADDITIONAL_PINS ?? '{}');
-      pin = Object.hasOwn(additional, tripId) ? additional[tripId] : null;
+      const key = `TRAVEL_DETAIL_PIN_${tripId.replaceAll('-', '').toUpperCase()}`;
+      pin = Object.hasOwn(additional, tripId) ? additional[tripId] : env[key];
     }
     if (typeof pin !== 'string' || pin.length !== 4 || !PIN.test(pin) || (env.SESSION_SECRET?.length ?? 0) < 32) return null;
     return { pin, secret: env.SESSION_SECRET };
