@@ -36,3 +36,21 @@ test('additional trips still require a valid signing secret', () => {
   const config = { ...env, SESSION_SECRET: '', TRAVEL_DETAIL_ADDITIONAL_PINS: JSON.stringify({ [newId]: newPin }) };
   assert.equal(tripPinConfig(newId, config), null);
 });
+
+test('individual trip PIN preserves both existing mappings and remains scoped to one trip', () => {
+  const key = `TRAVEL_DETAIL_PIN_${newId.replaceAll('-', '').toUpperCase()}`;
+  const extended = { ...env, [key]: newPin };
+  assert.equal(tripPinConfig(newId, extended)?.pin, newPin);
+  assert.deepEqual(tripPinConfig(existingId, extended), tripPinConfig(existingId, env));
+  assert.equal(tripPinConfig(randomUUID(), extended), null);
+  assert.equal(tripPinConfig(newId, { ...extended, SESSION_SECRET: '' }), null);
+  for (const pin of ['', '123', '12345', 'abcd', 1234]) {
+    assert.equal(tripPinConfig(newId, { ...extended, [key]: pin }), null);
+  }
+  assert.equal(tripPinConfig(newId, {
+    ...extended, TRAVEL_DETAIL_ADDITIONAL_PINS: JSON.stringify({ [newId]: existingPin }),
+  })?.pin, existingPin);
+  assert.equal(tripPinConfig(newId, {
+    ...extended, TRAVEL_DETAIL_PINS: JSON.stringify({ [newId]: existingPin }),
+  })?.pin, existingPin);
+});
