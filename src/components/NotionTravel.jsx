@@ -6,6 +6,7 @@ import { calculateExpenseStatistics, expenseCategory } from '../expenseStatistic
 import { compareBookingUseDate, sortByDisplayOrder } from '../displayOrder.js';
 import { readTripViewState, saveTripViewState } from '../tripViewState.js';
 import { sortTripList } from '../tripListOrder.js';
+import { overviewTransport } from '../overviewTransport.js';
 import { useTripPhotos } from '../useTripPhotos.js';
 import ExpenseStatistics from './ExpenseStatistics.jsx';
 import DestinationInfoTab from './DestinationInfoTab.jsx';
@@ -170,17 +171,20 @@ function ChecklistProgress({ items }) {
 }
 
 function OverviewBookings({ bookings, lodging = false }) {
-  const title = lodging ? '숙소' : '항공편';
+  const hasFlights = bookings.some(booking => booking.fields.예약유형 === '항공');
+  const hasTrains = bookings.some(booking => booking.fields.예약유형 !== '항공');
+  const title = lodging ? '숙소' : hasFlights && !hasTrains ? '항공편'
+    : hasTrains && !hasFlights ? '기차편' : '항공편 · 기차편';
   return (
     <article className="travel-reader-card">
-      <h3 className="travel-overview-booking-heading"><Mark name={lodging ? 'hotel' : 'plane'} />{title}</h3>
+      <h3 className="travel-overview-booking-heading"><Mark name={lodging ? 'hotel' : hasTrains && !hasFlights ? 'train' : 'plane'} />{title}</h3>
       {bookings.length === 0 ? <p>등록된 {title} 정보가 없습니다.</p> : (
         <ul className="travel-overview-booking-list">
           {bookings.map(booking => (
             <li key={booking.id}>
               <div className="travel-item-heading">
                 <h4>{booking.title}</h4>
-                <StatusChips statuses={{ 예약상태: booking.fields.예약상태 }} />
+                <StatusChips statuses={{ 예약상태: booking.fields.예약상태, 진행상태: booking.fields.진행상태 }} />
               </div>
               <Fields fields={{ 이용일: booking.fields.이용일 }} />
               {lodging ? (
@@ -207,7 +211,7 @@ function Overview({ data, onSelectTab }) {
   return (
     <section aria-label="개요">
       <div className="travel-card-grid travel-overview-bookings">
-        <OverviewBookings bookings={bookings.filter(booking => booking.fields.예약유형 === '항공')} />
+        <OverviewBookings bookings={overviewTransport(sections)} />
         <OverviewBookings lodging bookings={bookings.filter(booking => booking.fields.예약유형 === '숙소')} />
       </div>
       <div className="travel-kpis" aria-label="예산 요약">

@@ -9,6 +9,23 @@ const row = (id, start, status = '예정', date = {}) => ({
   id, fields: { 일시: start, 진행상태: status }, date: { start, ...date },
 });
 
+test('domestic trips use Korean midnight and select the next trip and timed event', () => {
+  for (const id of ['41d6d8c5-8de1-81ca-a669-c3b27d75a996', '4176d8c5-8de1-81e2-8644-f3b66935e8e4']) {
+    const trip = { id, fields: { 여행기간: '2026-11-21' } };
+    const before = stamp('2026-11-20T14:59:59Z');
+    const midnight = stamp('2026-11-20T15:00:00Z');
+    const calendar = tripCalendar(trip, midnight);
+    assert.equal(calendar.zone, 'Asia/Seoul');
+    assert.equal(calendar.today, '2026-11-21');
+    assert.equal(chooseTrips([trip], before).next, trip);
+    assert.deepEqual(chooseTrips([trip], midnight).active, [trip]);
+    assert.equal(chooseTrips([trip], midnight).unknownZone, false);
+    assert.deepEqual(chooseTrips([trip], stamp('2026-11-21T15:00:00Z')).active, []);
+    assert.equal(planDay([row('train', '2026-11-21T06:05')], calendar.today, calendar.zone, midnight)
+      .next.stamp, stamp('2026-11-20T21:05:00Z'));
+  }
+});
+
 test('chooses trips at local midnight and includes both travel boundaries', () => {
   assert.equal(tripCalendar(macau, stamp('2026-12-04T15:59:59Z')).today, '2026-12-04');
   assert.equal(chooseTrips([macau], stamp('2026-12-04T15:59:59Z')).next, macau);
