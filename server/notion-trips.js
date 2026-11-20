@@ -1,7 +1,7 @@
 import { NotionError, propertyValue, belongsTo, belongsToTrip, notionReader } from './notion-reader.js';
 import { loadCities, citiesForPage, publicCity, CityError } from './notion-cities.js';
 import { calendarZone } from '../src/destinationCities.js';
-import { tripPinConfig, tripSessionExpiry, unlockTrip } from './trip-pin.js';
+import { tripPinConfig, tripSessionExpiry, tripSessionCandidate, prepareTripUnlock, unlockTrip } from './trip-pin.js';
 import { INFO_CATEGORIES } from '../src/destinationCities.js';
 import { fetchPhoto, galleryPhotos, selectCover, sendPhoto } from './trip-photos.js';
 
@@ -125,11 +125,14 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   }
 
   const needsPin = Boolean(tripId && !coverRequest);
-  const config = needsPin ? tripPinConfig(tripId, env) : null;
-  if (req.method === 'POST') return unlockTrip(req, res, respond, tripId, config, env, fetcher, behindVercel);
-  const expiresAt = needsPin ? tripSessionExpiry(req, tripId, config) : 0;
-  if (needsPin && !config) return respond(res, 403, { error: 'trip_pin_not_configured' });
-  if (needsPin && !expiresAt) return respond(res, 401, { error: 'trip_pin_required' });
+  let expiresAt = 0;
+  let preparedPin;
+  if (req.method === 'POST') {
+    preparedPin = await prepareTripUnlock(req, res, respond, tripId, env, fetcher, behindVercel);
+    if (typeof preparedPin !== 'string') return;
+  } else if (needsPin && !tripSessionCandidate(req, tripId, env)) {
+    return respond(res, 401, { error: 'trip_pin_required' });
+  }
 
   const token = env.NOTION_TRAVEL_TOKEN?.trim();
   const sourceKeys = env.NOTION_TRAVEL_SHOPPING_SOURCE_ID?.trim()
@@ -181,6 +184,24 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
     const trip = await readPage(tripId);
     if (!belongsTo(trip, sources.trips) || trip.id !== tripId) {
       return respond(res, 404, { error: 'trip_not_found' });
+    }
+
+    if (needsPin) {
+      const policyProperty = trip.properties['PIN 방식'];
+      if (policyProperty && policyProperty.type !== 'select') {
+        return respond(res, 403, { error: 'trip_pin_not_configured' });
+      }
+      const policy = policyProperty?.select?.name;
+      if (policy === '접근 차단') return respond(res, 403, { error: 'trip_access_blocked' });
+      const date = trip.properties.여행기간;
+      const config = tripPinConfig(tripId, env, {
+        policy, start: date?.type === 'date' ? date.date?.start : null,
+        end: date?.type === 'date' ? date.date?.end : null,
+      });
+      if (!config) return respond(res, 403, { error: 'trip_pin_not_configured' });
+      if (req.method === 'POST') return unlockTrip(req, res, respond, tripId, config, env, fetcher, behindVercel, preparedPin);
+      expiresAt = tripSessionExpiry(req, tripId, config);
+      if (!expiresAt) return respond(res, 401, { error: 'trip_pin_required' });
     }
 
     if (coverRequest) {

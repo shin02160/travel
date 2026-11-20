@@ -51,6 +51,7 @@ const STATUS_FIELDS = {
 };
 const LATIN_TITLE = /^(?=.*\p{Script=Latin})[\p{Script=Latin}\p{M}\p{N}\p{P}\p{Z}]+$/u;
 const ERRORS = {
+  trip_access_blocked: '이 여행은 현재 접근이 차단되어 있습니다.',
   trip_pin_not_configured: '이 여행의 비밀번호가 아직 설정되지 않았습니다.',
   invalid_pin: '여행 비밀번호가 올바르지 않습니다.',
   invalid_pin_format: '숫자 4자리를 입력해 주세요.',
@@ -590,7 +591,7 @@ function PinForm({ tripId, onUnlock }) {
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin }),
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(20000),
       });
       const data = await responseData(response);
       if (data.unlocked !== true) throw new Error('여행 비밀번호를 확인할 수 없습니다.');

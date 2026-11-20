@@ -44,7 +44,14 @@ const allow = async () => Response.json({ result: 0 });
 
 async function request(url, fetcher, { method = 'GET', headers = {}, config = env, body, behindVercel = false } = {}) {
   const res = response();
-  await handleTrips({ method, url, headers, body }, res, config, fetcher, { behindVercel });
+  const upstream = async (target, init) => {
+    // Existing explicit-PIN unlock fixtures now also supply the authenticated source metadata.
+    if (method === 'POST' && String(target).startsWith('https://api.notion.com/v1/pages/')) {
+      return Response.json({ ...trip, id: String(target).split('/').at(-1) });
+    }
+    return fetcher(target, init);
+  };
+  await handleTrips({ method, url, headers, body }, res, config, upstream, { behindVercel });
   return res;
 }
 
@@ -313,7 +320,7 @@ test('public list needs no session, while detail and mutations fail closed', asy
   assert.equal((await request(path, neverFetch)).statusCode, 401);
   assert.equal((await request(path, neverFetch, { headers: { cookie: cookie + 'x' } })).statusCode, 401);
   assert.equal((await read(`/api/trips/${otherTripId}`, neverFetch)).statusCode, 401);
-  assert.equal((await read(`/api/trips/${randomUUID()}`, neverFetch)).statusCode, 403);
+  assert.equal((await read(`/api/trips/${randomUUID()}`, neverFetch)).statusCode, 401);
   assert.equal((await request(path, neverFetch, {
     headers: { cookie }, config: { ...env, TRAVEL_DETAIL_PINS: JSON.stringify({ [tripId]: '2020' }) },
   })).statusCode, 401);

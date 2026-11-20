@@ -17,16 +17,32 @@ else redis.call('INCR', KEYS[1]) end
 return 0
 `;
 
-export function tripPinConfig(tripId, env) {
+export function deriveTripPin(start) {
+  // Only calendar dates are accepted. Timed Notion ranges require a date-only correction.
+  if (typeof start !== 'string' || !/^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}$/.test(start)) return null;
+  const stamp = Date.parse(`${start}T00:00:00Z`);
+  if (!Number.isFinite(stamp) || new Date(stamp).toISOString().slice(0, 10) !== start) return null;
+  return start.slice(5, 7) + start.slice(8, 10);
+}
+
+export function tripPinConfig(tripId, env, { policy, start, end } = {}) {
+  if (policy === '접근 차단' || (policy && !['기존 PIN', '시작일 자동'].includes(policy))) return null;
   try {
     const pins = JSON.parse(env.TRAVEL_DETAIL_PINS ?? '{}');
+    if (!pins || typeof pins !== 'object' || Array.isArray(pins)) return null;
     let pin;
     if (Object.hasOwn(pins, tripId)) {
       pin = pins[tripId];
     } else {
       const additional = JSON.parse(env.TRAVEL_DETAIL_ADDITIONAL_PINS ?? '{}');
+      if (!additional || typeof additional !== 'object' || Array.isArray(additional)) return null;
       const key = `TRAVEL_DETAIL_PIN_${tripId.replaceAll('-', '').toUpperCase()}`;
       pin = Object.hasOwn(additional, tripId) ? additional[tripId] : env[key];
+    }
+    if (pin === undefined && policy === '시작일 자동') {
+      const derived = deriveTripPin(start);
+      if (!derived || (end != null && (!deriveTripPin(end) || end < start)) || (env.SESSION_SECRET?.length ?? 0) < 32) return null;
+      return { pin: derived, secret: env.SESSION_SECRET, mode: 'start-date', start };
     }
     if (typeof pin !== 'string' || pin.length !== 4 || !PIN.test(pin) || (env.SESSION_SECRET?.length ?? 0) < 32) return null;
     return { pin, secret: env.SESSION_SECRET };
@@ -41,8 +57,34 @@ function sign(tripId, expiry, config) {
     .digest();
 }
 
+function context(tripId, config) {
+  return createHmac('sha256', config.secret).update(`travel-trip-policy-v2:${tripId}:start-date:${config.start}`).digest('base64url');
+}
+
+function signEnvelope(tripId, expiry, policyContext, secret) {
+  return createHmac('sha256', secret).update(`travel-trip-v2:${tripId}:${expiry}:${policyContext}`).digest('base64url');
+}
+
+function v2Session(req, tripId, secret) {
+  if ((secret?.length ?? 0) < 32) return null;
+  const value = req.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(`${COOKIE}=`));
+  const match = value?.match(/^travel_trip_access=v2\.([0-9]{10})\.([A-Za-z0-9_-]{43})\.([A-Za-z0-9_-]{43})$/);
+  if (!match || Number(match[1]) * 1000 <= Date.now() || Number(match[1]) > Date.now() / 1000 + TTL) return null;
+  const expected = Buffer.from(signEnvelope(tripId, match[1], match[2], secret));
+  return timingSafeEqual(expected, Buffer.from(match[3])) ? { expiry: Number(match[1]), context: match[2] } : null;
+}
+
+// Reject unsigned/expired cookies before any Notion request, then check the current policy below.
+export function tripSessionCandidate(req, tripId, env) {
+  return Boolean(v2Session(req, tripId, env.SESSION_SECRET) || tripSessionExpiry(req, tripId, tripPinConfig(tripId, env)));
+}
+
 export function tripSessionExpiry(req, tripId, config) {
   if (!config) return 0;
+  if (config.mode === 'start-date') {
+    const session = v2Session(req, tripId, config.secret);
+    return session && timingSafeEqual(Buffer.from(session.context), Buffer.from(context(tripId, config))) ? session.expiry : 0;
+  }
   const cookie = req.headers.cookie?.split(';').map(part => part.trim())
     .find(part => part.startsWith(`${COOKIE}=`));
   const match = cookie?.match(/^travel_trip_access=([0-9]{10})\.([A-Za-z0-9_-]{43})$/);
@@ -74,7 +116,7 @@ async function reserveAttempt(tripId, env, fetcher) {
   return result;
 }
 
-export async function unlockTrip(req, res, respond, tripId, config, env, fetcher, behindVercel) {
+export async function prepareTripUnlock(req, res, respond, tripId, env, fetcher, behindVercel) {
   const secure = behindVercel || !!req.socket?.encrypted;
   if (!req.headers.host || req.headers.origin !== `${secure ? 'https' : 'http'}://${req.headers.host}`) {
     return respond(res, 403, { error: 'origin_mismatch' });
@@ -82,8 +124,6 @@ export async function unlockTrip(req, res, respond, tripId, config, env, fetcher
   if (req.headers['content-type']?.split(';')[0].trim() !== 'application/json') {
     return respond(res, 415, { error: 'expected_json' });
   }
-  if (!config) return respond(res, 403, { error: 'trip_pin_not_configured' });
-
   const { pin } = await readBody(req) ?? {};
   if (typeof pin !== 'string' || pin.length !== 4 || !PIN.test(pin)) return respond(res, 400, { error: 'invalid_pin_format' });
 
@@ -97,12 +137,23 @@ export async function unlockTrip(req, res, respond, tripId, config, env, fetcher
     res.setHeader('Retry-After', String(retryAfter));
     return respond(res, 429, { error: 'too_many_pin_attempts' });
   }
+  return pin;
+}
+
+export async function unlockTrip(req, res, respond, tripId, config, env, fetcher, behindVercel, preparedPin) {
+  const pin = preparedPin ?? await prepareTripUnlock(req, res, respond, tripId, env, fetcher, behindVercel);
+  if (typeof pin !== 'string') return;
+  if (!config) return respond(res, 403, { error: 'trip_pin_not_configured' });
   if (!timingSafeEqual(Buffer.from(pin), Buffer.from(config.pin))) {
     return respond(res, 401, { error: 'invalid_pin' });
   }
 
   const expiresAt = Math.floor(Date.now() / 1000) + TTL;
-  const value = `${expiresAt}.${sign(tripId, expiresAt, config).toString('base64url')}`;
+  const policyContext = config.mode === 'start-date' ? context(tripId, config) : null;
+  const value = policyContext
+    ? `v2.${expiresAt}.${policyContext}.${signEnvelope(tripId, expiresAt, policyContext, config.secret)}`
+    : `${expiresAt}.${sign(tripId, expiresAt, config).toString('base64url')}`;
+  const secure = behindVercel || !!req.socket?.encrypted;
   res.setHeader('Set-Cookie', `${COOKIE}=${value}; Path=/api/trips/${tripId}; HttpOnly; SameSite=Strict; ${secure ? 'Secure; ' : ''}Max-Age=${TTL}`);
   return respond(res, 200, { unlocked: true });
 }
