@@ -263,6 +263,7 @@ body { margin: 0; font-size: 14px; }
 }
 .travel-item-toggle[aria-expanded="true"] .travel-icon:last-child { transform: rotate(180deg); }
 .travel-item-body { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+.travel-reader .travel-booking-source { margin-top: 10px; }
 .travel-item-blocks { display: grid; gap: 6px; counter-reset: item-body-list; }
 .travel-item-blocks .travel-item-blocks { margin: 6px 0 0 16px; }
 .travel-item-block { white-space: pre-wrap; }

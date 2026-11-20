@@ -1,3 +1,4 @@
+import { zoneOffset } from './destinationCities.js';
 import { shiftDate } from './todaySchedule.js';
 
 export const WEATHER_TTL = 30 * 60 * 1000;
@@ -34,7 +35,7 @@ function series(group, pattern, fields, max) {
 }
 
 export function normalizeWeather(data, city, fetchedAt) {
-  if (!data || data.utc_offset_seconds !== 28800) throw new Error('invalid_weather_timezone');
+  if (!data || data.utc_offset_seconds !== zoneOffset(fetchedAt, city.zone)) throw new Error('invalid_weather_timezone');
   const now = localWeatherTime(fetchedAt, city.zone);
   const today = now.slice(0, 10);
   const current = data.current;

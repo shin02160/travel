@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { citiesForTrip, INFO_CATEGORIES } from '../destinationCities.js';
+import { INFO_CATEGORIES } from '../destinationCities.js';
 import { loadWeather, localWeatherTime, travelForecastDays, WEATHER_MAX_AGE, WEATHER_TTL, weatherCondition } from '../destinationWeather.js';
 import { tripCalendar } from '../todaySchedule.js';
 import './DestinationInfoTab.css';
@@ -10,8 +10,10 @@ const emptyWeather = { status: 'loading', data: null, locked: true };
 const temp = (value, unit = '°') => Number.isFinite(value) ? `${Math.round(value)}${unit}` : '—';
 const displayTime = value => value?.replace('T', ' ');
 
+const weatherKey = city => `${city.id}:${city.latitude}:${city.longitude}:${city.zone}`;
+
 function cachedWeather(city) {
-  const data = weatherCache.get(city.id);
+  const data = weatherCache.get(weatherKey(city));
   return data && Date.now() - data.fetchedAt < WEATHER_MAX_AGE ? data : null;
 }
 
@@ -74,7 +76,7 @@ function useWeather(city) {
         if (pending.signal.aborted) throw new Error('weather_timeout');
         if (!(data.current && [data.current.temp, data.current.feels, data.current.code].some(value => value !== null)) &&
             !data.hourly.length && !data.daily.length) throw new Error('empty_weather');
-        weatherCache.set(city.id, data);
+        weatherCache.set(weatherKey(city), data);
         nextAttempt = data.fetchedAt + WEATHER_TTL;
         setState({ status: 'success', data, locked: true });
         trackExpiry(data);
@@ -211,6 +213,7 @@ function WeatherCard({ city, weather, epoch }) {
 
 function useRegionCards(tripId, city) {
   const [result, setResult] = useState({ status: 'loading', cards: [] });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     const params = new URLSearchParams({ section: 'info', city: city.id });
@@ -225,8 +228,8 @@ function useRegionCards(tripId, city) {
       if (!controller.signal.aborted) setResult({ status: 'error', cards: [] });
     });
     return () => controller.abort();
-  }, [tripId, city]);
-  return result;
+  }, [tripId, city, attempt]);
+  return { ...result, retry: () => { setResult({ status: 'loading', cards: [] }); setAttempt(value => value + 1); } };
 }
 
 function ClothingGuide({ city, calendar, result, weather }) {
@@ -276,6 +279,7 @@ function RegionCards({ result }) {
     <p>Notion에 저장된 내용만 표시 · 자동 갱신하지 않음</p>
     {result.status === 'loading' && <p role="status">지역 정보를 불러오는 중입니다.</p>}
     {result.status === 'error' && <p role="status">지역 정보를 불러오지 못했습니다. 나중에 다시 확인해 주세요.</p>}
+    {result.status === 'error' && <button type="button" onClick={result.retry}>지역 정보 다시 시도</button>}
     {result.status === 'unconfigured' && <p role="status">Notion 여행지 정보가 아직 연결되지 않았습니다.</p>}
     <div className="destination-region-grid" aria-busy={result.status === 'loading'}>
       {INFO_CATEGORIES.map(category => {
@@ -301,7 +305,7 @@ function RegionCards({ result }) {
 function CityInformation({ city, trip, now }) {
   const weather = useWeather(city);
   const result = useRegionCards(trip.id, city);
-  const calendar = tripCalendar(trip, now);
+  const calendar = tripCalendar({ ...trip, calendarZone: city.zone }, now);
   return <>
     <WeatherCard city={city} weather={weather} epoch={now} />
     <ClothingGuide city={city} calendar={calendar} result={result} weather={weather} />
@@ -310,7 +314,7 @@ function CityInformation({ city, trip, now }) {
 }
 
 export default function DestinationInfoTab({ trip, now }) {
-  const cities = citiesForTrip(trip.id);
+  const cities = trip.cities ?? [];
   const [cityId, setCityId] = useState(cities[0]?.id);
   const city = cities.find(item => item.id === cityId) ?? cities[0];
   return <section className="travel-section destination-info" aria-label="도시별 여행 정보">
@@ -321,7 +325,7 @@ export default function DestinationInfoTab({ trip, now }) {
           onClick={() => setCityId(option.id)}>{option.name}</button>)}
       </div>}
     </header>
-    {city ? <CityInformation key={`${trip.id}:${city.id}`} city={city} trip={trip} now={now} />
-      : <p className="travel-empty">이 여행에는 아직 등록된 도시가 없습니다.</p>}
+    {city ? <CityInformation key={`${trip.id}:${weatherKey(city)}`} city={city} trip={trip} now={now} />
+      : <p className="travel-empty">{trip.citiesError ? ({ cities_not_configured: '도시 데이터 연결 설정이 필요합니다.', cities_access_denied: '도시 데이터를 읽을 권한이 없습니다.' }[trip.citiesError] ?? '도시 정보를 불러오지 못했습니다. 여행 새로고침으로 다시 시도해 주세요.') : 'Notion에서 이 여행에 활성 도시를 연결해 주세요.'}</p>}
   </section>;
 }

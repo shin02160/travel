@@ -6,12 +6,12 @@ import StatusChips from './StatusChips.jsx';
 
 const EVENT_ICONS = { 이동: 'train', 관광: 'map', 식사: 'compass', 쇼핑: 'wallet', 공연: 'music', 숙박: 'hotel', 휴식: 'home' };
 
-function EventDetails({ row, end, bookings }) {
+function EventDetails({ row, end, bookings, tripZone }) {
   const [copyMessage, setCopyMessage] = useState('');
   const location = row.fields.장소;
   const related = (row.bookingIds ?? []).map(id => bookings.get(id)).filter(Boolean);
   const sourceTime = row.fields.일시;
-  const zone = row.date?.timeZone;
+  const zone = row.date?.timeZone ?? tripZone;
   if (!location && !row.note && !row.sourceUrl && !related.length && !sourceTime) return null;
   const copy = async () => {
     try {
@@ -118,7 +118,7 @@ export default function TodayDashboard({ data, selectedDate, onDateChange, now }
                         <StatusChips statuses={{ 진행상태 }} />
                       </div>
                       {장소 && <p className="travel-event-location">{장소}</p>}
-                      <EventDetails row={row} end={eventEnd} bookings={bookings} />
+                      <EventDetails row={row} end={eventEnd} bookings={bookings} tripZone={zone} />
                     </article>
                   </li>
                 );

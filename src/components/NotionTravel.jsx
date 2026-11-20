@@ -5,23 +5,28 @@ import { formatDateTime, formatLocalTimestamp } from '../dateDisplay.js';
 import { calculateExpenseStatistics, expenseCategory } from '../expenseStatistics.js';
 import { compareBookingUseDate, sortByDisplayOrder } from '../displayOrder.js';
 import { readTripViewState, saveTripViewState } from '../tripViewState.js';
+import { sortTripList } from '../tripListOrder.js';
+import { overviewTransport } from '../overviewTransport.js';
+import { useTripPhotos } from '../useTripPhotos.js';
 import ExpenseStatistics from './ExpenseStatistics.jsx';
 import DestinationInfoTab from './DestinationInfoTab.jsx';
 import TodayDashboard from './TodayDashboard.jsx';
 import StatusChips from './StatusChips.jsx';
+import TravelGallery from './TravelGallery.jsx';
 import './NotionTravel.css';
 
 const TABS = {
   overview: '개요', today: '오늘 일정', schedule: '일정', bookings: '예약', budgets: '예산',
   expenses: '지출', receipts: '영수증', checklist: '체크리스트', packing: '간편 체크리스트', shopping: '쇼핑 리스트',
-  info: '정보',
+  photos: '사진', info: '정보',
 };
 const TAB_ICONS = {
   overview: 'compass', today: 'calendar', schedule: 'calendar', bookings: 'plane', budgets: 'wallet',
   expenses: 'currency', receipts: 'fileText', checklist: 'check', packing: 'check', shopping: 'wallet',
-  info: 'compass',
+  photos: 'image', info: 'compass',
 };
 const COVERS = {
+  '41d6d8c5-8de1-81ca-a669-c3b27d75a996': 'destination-mokpo.svg',
   '4176d8c5-8de1-81e2-8644-f3b66935e8e4': 'destination-busan.png',
   '4136d8c5-8de1-81ce-a4c8-dbda8e993076': 'destination-shanghai.jpg',
   '4136d8c5-8de1-81f4-a070-e07878964af0': 'destination-guangzhou.jpg',
@@ -36,7 +41,7 @@ const FILTER_FIELDS = {
   shopping: '분류',
 };
 const WON_FIELDS = new Set(['총예산', '총지출', '잔여예산', '예산 KRW', '사용금액', '잔액', '원화 확정액', '집계 금액']);
-const DATE_FIELDS = new Set(['여행기간', '일시', '이용일', '결제일', '구매예정일', '기한']);
+const DATE_FIELDS = new Set(['여행기간', '일시', '이용일', '결제일', '구매예정일', '기한', '취소기한']);
 const STATUS_FIELDS = {
   bookings: ['예약상태', '결제상태'],
   expenses: ['정산여부'],
@@ -46,6 +51,7 @@ const STATUS_FIELDS = {
 };
 const LATIN_TITLE = /^(?=.*\p{Script=Latin})[\p{Script=Latin}\p{M}\p{N}\p{P}\p{Z}]+$/u;
 const ERRORS = {
+  trip_access_blocked: '이 여행은 현재 접근이 차단되어 있습니다.',
   trip_pin_not_configured: '이 여행의 비밀번호가 아직 설정되지 않았습니다.',
   invalid_pin: '여행 비밀번호가 올바르지 않습니다.',
   invalid_pin_format: '숫자 4자리를 입력해 주세요.',
@@ -105,7 +111,7 @@ function Mark({ name, size = 18 }) {
   return <span className="travel-icon" aria-hidden="true"><Icon name={name} size={size} /></span>;
 }
 
-function Cover({ trip, className = '' }) {
+function Cover({ trip, className = '', photoSrc }) {
   const file = COVERS[trip.id];
   return (
     <div className={`travel-cover ${className}`} aria-hidden="true">
@@ -114,6 +120,8 @@ function Cover({ trip, className = '' }) {
         <img src={`${import.meta.env.BASE_URL}${file}`} alt="" width="1200" height="600"
           loading="lazy" decoding="async" onError={event => { event.currentTarget.hidden = true; }} />
       )}
+      {photoSrc && <img key={photoSrc} src={photoSrc} alt="" width="1200" height="600" loading="lazy" decoding="async"
+        onError={event => { event.currentTarget.hidden = true; }} />}
     </div>
   );
 }
@@ -131,7 +139,7 @@ function TripCard({ trip, onSelect }) {
   return (
     <li>
       <article className="travel-trip-card">
-        <Cover trip={trip} />
+        <Cover trip={trip} photoSrc={`${tripPath(trip.id)}?section=cover`} />
         <div className="travel-trip-copy">
           <div className="travel-item-heading">
             <h3>
@@ -164,17 +172,20 @@ function ChecklistProgress({ items }) {
 }
 
 function OverviewBookings({ bookings, lodging = false }) {
-  const title = lodging ? '숙소' : '항공편';
+  const hasFlights = bookings.some(booking => booking.fields.예약유형 === '항공');
+  const hasTrains = bookings.some(booking => booking.fields.예약유형 !== '항공');
+  const title = lodging ? '숙소' : hasFlights && !hasTrains ? '항공편'
+    : hasTrains && !hasFlights ? '기차편' : '항공편 · 기차편';
   return (
     <article className="travel-reader-card">
-      <h3 className="travel-overview-booking-heading"><Mark name={lodging ? 'hotel' : 'plane'} />{title}</h3>
+      <h3 className="travel-overview-booking-heading"><Mark name={lodging ? 'hotel' : hasTrains && !hasFlights ? 'train' : 'plane'} />{title}</h3>
       {bookings.length === 0 ? <p>등록된 {title} 정보가 없습니다.</p> : (
         <ul className="travel-overview-booking-list">
           {bookings.map(booking => (
             <li key={booking.id}>
               <div className="travel-item-heading">
                 <h4>{booking.title}</h4>
-                <StatusChips statuses={{ 예약상태: booking.fields.예약상태 }} />
+                <StatusChips statuses={{ 예약상태: booking.fields.예약상태, 진행상태: booking.fields.진행상태 }} />
               </div>
               <Fields fields={{ 이용일: booking.fields.이용일 }} />
               {lodging ? (
@@ -201,7 +212,7 @@ function Overview({ data, onSelectTab }) {
   return (
     <section aria-label="개요">
       <div className="travel-card-grid travel-overview-bookings">
-        <OverviewBookings bookings={bookings.filter(booking => booking.fields.예약유형 === '항공')} />
+        <OverviewBookings bookings={overviewTransport(sections)} />
         <OverviewBookings lodging bookings={bookings.filter(booking => booking.fields.예약유형 === '숙소')} />
       </div>
       <div className="travel-kpis" aria-label="예산 요약">
@@ -307,7 +318,7 @@ function ItemBlocks({ blocks }) {
   );
 }
 
-function ChecklistItemBody({ tripId, itemId, section }) {
+function RecordDetails({ tripId, itemId, section }) {
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState(null);
 
@@ -336,7 +347,16 @@ function ChecklistItemBody({ tripId, itemId, section }) {
     </>
   );
 
-  const { blocks, partial, sourceId = itemId } = result.data;
+  const { fields = {}, blocks, partial, sourceId = itemId } = result.data;
+  if (section === 'bookings') {
+    return (
+      <>
+        {Object.keys(fields).length ? <Fields fields={fields} /> : <p>등록된 세부 정보가 없습니다.</p>}
+        <p className="travel-booking-source"><a href={`https://www.notion.so/${sourceId.replaceAll('-', '')}`}
+          target="_blank" rel="noopener noreferrer">Notion에서 예약 원본 보기</a></p>
+      </>
+    );
+  }
   return (
     <>
       {blocks.length > 0 && <ItemBlocks blocks={blocks} />}
@@ -349,7 +369,7 @@ function ChecklistItemBody({ tripId, itemId, section }) {
 
 function RecordCard({ row, tab, tripId, statusFields, open, onToggle }) {
   const bodyId = useId();
-  const expandable = tab === 'checklist' || tab === 'shopping';
+  const expandable = tab === 'bookings' || tab === 'checklist' || tab === 'shopping';
   const complete = expandable && row.fields.상태 === '완료';
   const statuses = Object.fromEntries(statusFields.map(field => [field, settlementLabel(row.fields[field])]));
 
@@ -368,7 +388,7 @@ function RecordCard({ row, tab, tripId, statusFields, open, onToggle }) {
       </div>
       <Fields fields={row.fields} />
       {expandable && <div id={bodyId} className="travel-item-body" hidden={!open}>
-        {open && <ChecklistItemBody tripId={tripId} itemId={row.id} section={tab} />}
+        {open && <RecordDetails tripId={tripId} itemId={row.id} section={row.sourceSection ?? tab} />}
       </div>}
     </li>
   );
@@ -378,8 +398,11 @@ function RecordList({ rows, tab, tripId, opened, onToggle }) {
   const statusFields = STATUS_FIELDS[tab] ?? [];
   return (
     <ul className="travel-card-grid travel-reader-list">
-      {rows.map(row => <RecordCard key={row.id} row={row} tab={tab} tripId={tripId} statusFields={statusFields}
-        open={opened.includes(`${tab}:${row.id}`)} onToggle={() => onToggle(`${tab}:${row.id}`)} />)}
+      {rows.map(row => {
+        const itemKey = `${row.sourceSection ?? tab}:${row.id}`;
+        return <RecordCard key={row.id} row={row} tab={tab} tripId={tripId} statusFields={statusFields}
+          open={opened.includes(itemKey)} onToggle={() => onToggle(itemKey)} />;
+      })}
     </ul>
   );
 }
@@ -408,7 +431,9 @@ function ExpenseTabs({ view, onChange }) {
   );
 }
 
-function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, lastRead }) {
+function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinRequired, now, lastRead }) {
+  const gallery = useTripPhotos(data.trip.id);
+  const coverPhoto = gallery.result?.data?.photos.find(photo => photo.id === gallery.result.data.coverId);
   const [view, setView] = useState(() => {
     try {
       return readTripViewState(data.trip.id, window.sessionStorage);
@@ -467,7 +492,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
   return (
     <>
       <header className="travel-hero">
-        <Cover trip={data.trip} />
+        <Cover trip={data.trip} photoSrc={tab !== 'photos' ? coverPhoto?.src : null} />
         <div className="travel-hero-copy">
           <div className="travel-item-heading">
             <h1 lang={LATIN_TITLE.test(data.trip.title) ? 'en' : undefined}>{data.trip.title}</h1>
@@ -491,12 +516,13 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, now, l
             <header className="travel-section-heading"><h2>간편 체크리스트</h2></header>
             <p className="travel-packing-note">Notion의 공통 준비물 간편 체크 페이지입니다. 체크 상태는 Notion에서 변경해 주세요.</p>
             <div className="travel-reader-card">
-              <ChecklistItemBody key={lastRead} tripId={data.trip.id} section="packing" />
+              <RecordDetails key={lastRead} tripId={data.trip.id} section="packing" />
             </div>
           </section>
         )}
         {tab === 'info' && <DestinationInfoTab key={`${data.trip.id}:${lastRead}`} trip={data.trip} now={now} />}
-        {!['overview', 'today', 'packing', 'info'].includes(tab) && (
+        {tab === 'photos' && <TravelGallery {...gallery} onPinRequired={onPinRequired} />}
+        {!['overview', 'today', 'packing', 'photos', 'info'].includes(tab) && (
           <section className="travel-section" aria-label={TABS[tab]}>
             <header className="travel-section-heading">
               <div><h2>{TABS[tab]}</h2>{!shoppingUnconfigured && !showStatistics && <p>{historyItems.length}개 항목</p>}</div>
@@ -565,7 +591,7 @@ function PinForm({ tripId, onUnlock }) {
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin }),
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(20000),
       });
       const data = await responseData(response);
       if (data.unlocked !== true) throw new Error('여행 비밀번호를 확인할 수 없습니다.');
@@ -762,12 +788,13 @@ export default function NotionTravel() {
             <TodayHome trips={current.data.trips} now={now} navigate={navigate} />
             {current.data.trips.length === 0 && <p className="travel-empty">등록된 여행이 없습니다.</p>}
             <ul className="travel-card-grid travel-reader-list">
-              {current.data.trips.map(trip => <TripCard key={trip.id} trip={trip} onSelect={navigate} />)}
+              {sortTripList(current.data.trips).map(trip => <TripCard key={trip.id} trip={trip} onSelect={navigate} />)}
             </ul>
           </section>
         )}
         {current?.data?.trip && (
           <TripDetail key={tripId} data={current.data} tab={tab} selectedDate={selectedDate} now={now} lastRead={lastRead?.time}
+            onPinRequired={refresh}
             onSelectTab={next => navigate(tripId, next, true, selectedDate)}
             onDateChange={date => navigate(tripId, 'today', true, date)} />
         )}

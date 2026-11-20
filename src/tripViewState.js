@@ -1,7 +1,7 @@
 import { datePart } from './todaySchedule.js';
 
 const TABS = ['overview', 'today', 'schedule', 'bookings', 'budgets', 'expenses', 'receipts', 'checklist', 'packing', 'shopping'];
-const ITEM_KEY = /^(checklist|shopping):[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
+const ITEM_KEY = /^(bookings|checklist|shopping):[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const storageKey = tripId => `travel:view:v1:${tripId}`;
 
 export function readTripViewState(tripId, storage) {
