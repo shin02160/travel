@@ -1,9 +1,4 @@
-const TRIP_ZONES = {
-  '41d6d8c5-8de1-81ca-a669-c3b27d75a996': 'Asia/Seoul',
-  '4176d8c5-8de1-81e2-8644-f3b66935e8e4': 'Asia/Seoul',
-  '4136d8c5-8de1-81ce-a4c8-dbda8e993076': 'Asia/Shanghai',
-  '4136d8c5-8de1-81f4-a070-e07878964af0': 'Asia/Macau',
-};
+import { calendarZone, validZone } from './destinationCities.js';
 const DAY = 86400000;
 const DATE = /^\d{4}-\d{2}-\d{2}/;
 const TIME = /T(\d{2}:\d{2})/;
@@ -53,7 +48,7 @@ export function tripCalendar(trip, now) {
   const [from, to] = trip.fields.여행기간?.split(' ~ ') ?? [];
   const start = datePart(from);
   const end = datePart(to ?? from);
-  const zone = TRIP_ZONES[trip.id] ?? null;
+  const zone = (validZone(trip.calendarZone) ? trip.calendarZone : calendarZone(trip.cities, from, to ?? from));
   const today = zone ? localDateTime(now, zone).slice(0, 10) : null;
   return { start, end: start && end && end >= start ? end : null, zone, today };
 }

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { citiesForTrip } from '../src/destinationCities.js';
+import { cityFixtures, cityEnv, cityList } from './fixtures/cities.mjs';
 import { loadWeather, normalizeWeather, travelForecastDays, weatherCondition } from '../src/destinationWeather.js';
 import { handleWeather } from '../api/weather.js';
 
-const [city] = citiesForTrip('4136d8c5-8de1-81f4-a070-e07878964af0');
+const city = { id: 'MO_MACAU', name: '마카오', zone: 'Asia/Macau', latitude: 22.1987, longitude: 113.5439 };
 
 test('forecast uses destination midnight, preserves zeros and rejects malformed upstream data', () => {
   // At this instant Seoul is already on Nov 14, but the destination is not.
@@ -60,7 +60,10 @@ test('weather endpoint accepts only configured cities and caches valid responses
   async function request(url, fetcher) {
     const res = { headers: {}, setHeader(name, value) { this.headers[name] = value; },
       end(body) { this.body = JSON.parse(body); } };
-    await handleWeather({ method: 'GET', url }, res, fetcher);
+    await handleWeather({ method: 'GET', url }, res, async (url, init) => {
+      if (String(url).startsWith('https://api.notion.com/')) return cityList(cityFixtures);
+      return fetcher(url, init);
+    }, cityEnv);
     return res;
   }
 
@@ -74,7 +77,7 @@ test('weather endpoint accepts only configured cities and caches valid responses
   const result = await request('/api/weather?city=MO_MACAU', async (url, options) => {
     assert.equal(url.origin, 'https://api.open-meteo.com');
     assert.equal(url.searchParams.get('forecast_days'), '7');
-    assert.equal(url.searchParams.get('timezone'), 'Asia/Shanghai');
+    assert.equal(url.searchParams.get('timezone'), 'Asia/Macau');
     assert.equal(url.searchParams.get('latitude'), '22.1987');
     assert.equal(options.redirect, 'error');
     return Response.json(forecast);

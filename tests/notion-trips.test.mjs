@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Writable } from 'node:stream';
 import { handleTrips } from '../server/notion-trips.js';
+import { cityFixtures, citySource, cityList } from './fixtures/cities.mjs';
 
 const tripId = randomUUID();
 const otherTripId = randomUUID();
@@ -56,6 +57,50 @@ assert.equal(auth.statusCode, 200);
 const cookie = auth.headers['Set-Cookie'].split(';')[0];
 const expiresAt = Number(cookie.split('=')[1].split('.')[0]);
 const read = (url, fetcher) => request(url, fetcher, { headers: { cookie } });
+
+test('protected details read dynamic cities, public summaries expose only calendar zone, and empty domestic guides succeed', async () => {
+  const config = { ...env, NOTION_TRAVEL_CITIES_SOURCE_ID: citySource, NOTION_TRAVEL_INFO_SOURCE_ID: randomUUID() };
+  const fixtureTrip = { ...trip, properties: { ...trip.properties, 도시: relation(cityFixtures[0].id) } };
+  let pages = cityFixtures;
+  const fetcher = async (url, init) => {
+    if (url.endsWith(`/pages/${tripId}`)) return Response.json(fixtureTrip);
+    if (url.endsWith(`/data_sources/${citySource}/query`)) return cityList(pages);
+    if (url.endsWith(`/data_sources/${sources.trips}/query`)) return list([fixtureTrip]);
+    assert.equal(JSON.parse(init.body).filter.property ?? JSON.parse(init.body).filter.and[0].property, '여행');
+    return list([]);
+  };
+  const result = await request(path, fetcher, { config, headers: { cookie } });
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.trip.cities[0].id, 'KR_MOKPO');
+  assert.equal(result.body.trip.cities[0].zone, 'Asia/Seoul');
+  assert.equal(result.body.trip.cities[0].notionId, undefined);
+  assert.equal(result.body.trip.citiesError, null);
+  assert.ok(Array.isArray(result.body.sections.bookings));
+  const publicList = await request('/api/trips', fetcher, { config });
+  assert.equal(publicList.body.trips[0].calendarZone, 'Asia/Seoul');
+  assert.equal(publicList.body.trips[0].cities, undefined);
+  assert.equal(publicList.body.trips[0].fields.총예산, undefined);
+  const empty = await request(path + '?section=info&city=KR_MOKPO', fetcher, { config, headers: { cookie } });
+  assert.equal(empty.statusCode, 200);
+  assert.deepEqual(empty.body.cards, []);
+  assert.equal(empty.body.configured, true);
+  assert.equal((await request(path + '?section=info&city=KR_BUSAN', fetcher, { config, headers: { cookie } })).statusCode, 403);
+  // Incomplete relations never silently become a partial set of cities.
+  fixtureTrip.properties.도시.has_more = true;
+  const partial = await request(path, fetcher, { config, headers: { cookie } });
+  assert.equal(partial.statusCode, 200);
+  assert.equal(partial.body.trip.citiesError, 'city_relation_invalid');
+  assert.ok(Array.isArray(partial.body.sections.expenses));
+  assert.equal((await request(path + '?section=info&city=KR_MOKPO', fetcher, { config, headers: { cookie } })).statusCode, 502);
+  fixtureTrip.properties.도시 = relation();
+  const none = await request(path, fetcher, { config, headers: { cookie } });
+  assert.deepEqual(none.body.trip.cities, []);
+  assert.equal(none.body.trip.citiesError, null);
+  pages = [];
+  const missingConfig = await request(path, fetcher, { config: { ...config, NOTION_TRAVEL_CITIES_SOURCE_ID: '' }, headers: { cookie } });
+  assert.equal(missingConfig.body.trip.citiesError, 'cities_not_configured');
+  assert.ok(Array.isArray(missingConfig.body.sections.expenses));
+});
 
 test('gallery filters photos by trip, sorts attachments, and only proxies authenticated Notion images', async () => {
   const source = randomUUID();
@@ -180,14 +225,16 @@ test('gallery filters photos by trip, sorts attachments, and only proxies authen
 test('destination cards enforce PIN, trip and city boundaries and sanitize sources', async () => {
   const id = '4136d8c5-8de1-81f4-a070-e07878964af0';
   const source = randomUUID();
+  const citySource = randomUUID();
+  const cityId = randomUUID();
   const route = `/api/trips/${id}`;
   const endpoint = `${route}?section=info&city=MO_MACAU`;
   const config = {
-    ...env, TRAVEL_DETAIL_PINS: JSON.stringify({ [id]: pin }), NOTION_TRAVEL_INFO_SOURCE_ID: source,
+    ...env, TRAVEL_DETAIL_PINS: JSON.stringify({ [id]: pin }), NOTION_TRAVEL_INFO_SOURCE_ID: source, NOTION_TRAVEL_CITIES_SOURCE_ID: citySource,
   };
   const never = () => assert.fail('unexpected upstream request');
   assert.equal((await request(endpoint, never, { config })).statusCode, 401);
-  assert.equal((await request(`${route}?section=info&city=CN_SHANGHAI`, never, { config })).statusCode, 400);
+  assert.equal((await request(`${route}?section=info&city=CN_SHANGHAI`, never, { config })).statusCode, 401);
   const result = await request(route, allow, { method: 'POST', headers: pinHeaders, body: { pin }, config });
   assert.equal(result.statusCode, 200);
   const headers = { cookie: result.headers['Set-Cookie'].split(';')[0] };
@@ -195,7 +242,7 @@ test('destination cards enforce PIN, trip and city boundaries and sanitize sourc
   const select = name => ({ type: 'select', select: { name } });
   const regionRow = (city, relationIds, text, url, category = '주요 교통') => ({
     ...row('shopping', {
-      여행: relation(...relationIds), '도시 코드': select(city), 분류: select(category),
+      도시: relation(city === 'MO_MACAU' ? cityId : otherTripId), 여행: relation(...relationIds), '도시 코드': select(city), 분류: select(category),
       내용: { type: 'rich_text', rich_text: [{ plain_text: text }] },
       '추천 옷차림': { type: 'rich_text', rich_text: [{ plain_text: `${text} 옷차림` }] },
       '정보 상태': select('공식 확인'),
@@ -205,11 +252,18 @@ test('destination cards enforce PIN, trip and city boundaries and sanitize sourc
     parent: { type: 'data_source_id', data_source_id: source },
   });
   const fixture = async (url, init) => {
-    if (url.endsWith(`/pages/${id}`)) return Response.json({ ...trip, id });
+    if (url.endsWith(`/pages/${id}`)) return Response.json({ ...trip, id, properties: { ...trip.properties, 도시: relation(cityId) } });
+    if (url.endsWith(`/data_sources/${citySource}/query`)) return list([{
+      object: 'page', id: cityId, parent: { type: 'data_source_id', data_source_id: citySource },
+      properties: { 도시명: title('마카오'), '도시 코드': { type: 'rich_text', rich_text: [{ plain_text: 'MO_MACAU' }] },
+        '국가 코드': { type: 'rich_text', rich_text: [{ plain_text: 'MO' }] },
+        시간대: { type: 'rich_text', rich_text: [{ plain_text: 'Asia/Macau' }] },
+        위도: number(22.1987), 경도: number(113.5439), 활성: { type: 'checkbox', checkbox: true } },
+    }]);
     assert.ok(url.endsWith(`/data_sources/${source}/query`));
     assert.deepEqual(JSON.parse(init.body).filter, { and: [
       { property: '여행', relation: { contains: id } },
-      { property: '도시 코드', select: { equals: 'MO_MACAU' } },
+      { property: '도시', relation: { contains: cityId } },
     ] });
     return list([
       regionRow('MO_MACAU', [id], 'macau', 'javascript:alert(1)'),
@@ -222,6 +276,7 @@ test('destination cards enforce PIN, trip and city boundaries and sanitize sourc
       regionRow('MO_MACAU', [otherTripId], 'other trip features', null, '지역 특징'),
     ]);
   };
+  assert.equal((await request(`${route}?section=info&city=CN_SHANGHAI`, fixture, { headers, config })).statusCode, 403);
   const { body, statusCode } = await request(endpoint, fixture, { headers, config });
   assert.equal(statusCode, 200);
   assert.deepEqual(body.cards.map(({ text, date, status, url }) => [text, date, status, url]), [
@@ -230,6 +285,23 @@ test('destination cards enforce PIN, trip and city boundaries and sanitize sourc
     ['source retained', '2026-11-13', '공식 확인', 'https://example.org/'],
   ]);
   assert.deepEqual(body.cards.flatMap(card => card.clothing ? [card.clothing] : []), ['local features 옷차림']);
+  const duplicate = await request(endpoint, async (url, init) => {
+    const response = await fixture(url, init);
+    if (!url.endsWith(`/data_sources/${source}/query`)) return response;
+    const data = await response.json();
+    data.results.push({ ...data.results[0], id: randomUUID() });
+    return Response.json(data);
+  }, { headers, config });
+  assert.equal(duplicate.body.cards.find(card => card.category === '주요 교통').duplicate, true);
+  const mismatch = await request(endpoint, async (url, init) => {
+    const response = await fixture(url, init);
+    if (!url.endsWith(`/data_sources/${source}/query`)) return response;
+    const data = await response.json();
+    data.results[0].properties['도시 코드'] = select('CN_SHANGHAI');
+    return Response.json(data);
+  }, { headers, config });
+  assert.equal(mismatch.statusCode, 502);
+  assert.equal(mismatch.body.cards, undefined);
   const unconfigured = await request(endpoint, fixture, { headers, config: { ...config, NOTION_TRAVEL_INFO_SOURCE_ID: '' } });
   assert.equal(unconfigured.body.configured, false);
   assert.deepEqual(unconfigured.body.cards, []);
