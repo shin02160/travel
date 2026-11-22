@@ -410,10 +410,12 @@ test('detail verifies each data source and scopes every section to exactly one t
     '적용 환율': number(200),
     결제자: { type: 'rich_text', rich_text: [{ plain_text: '테스트 결제자' }] },
     결제수단: { type: 'select', select: { name: '카드' } },
+    비용구분: { type: 'select', select: { name: '개인' } },
     정산여부: { type: 'checkbox', checkbox: false },
   });
   const settledExpense = row('expenses', {
     지출명: title('숙박비'), 여행: relation(tripId), 정산여부: { type: 'checkbox', checkbox: true },
+    비용구분: { type: 'select', select: { name: '공동' } },
   });
   const olderExpense = row('expenses', { 지출명: title('식비'), 여행: relation(tripId) });
   const visibleBooking = row('bookings', {
@@ -501,6 +503,7 @@ test('detail verifies each data source and scopes every section to exactly one t
   assert.equal(otherEvent.mapUrl, null);
   assert.equal(res.body.sections.expenses[0].fields.결제자, '테스트 결제자');
   assert.deepEqual(res.body.sections.expenses.map(item => item.fields.결제수단), ['카드', null, null]);
+  assert.deepEqual(res.body.sections.expenses.map(item => item.fields.비용구분), ['개인', '공동', null]);
   assert.equal(res.body.sections.expenses[0].displayOrder, 20);
   assert.deepEqual(res.body.sections.expenses[0].posting, { status: '결제완료', type: '지출', rate: 200 });
   assert.deepEqual(res.body.sections.expenses.map(item => item.fields.정산여부), [false, true, null]);

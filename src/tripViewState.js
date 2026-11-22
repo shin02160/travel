@@ -16,6 +16,7 @@ export function readTripViewState(tripId, storage) {
     return [tab, {
       query: typeof filter?.query === 'string' ? filter.query : '',
       category: typeof filter?.category === 'string' ? filter.category : null,
+      ...(tab === 'expenses' && { costType: typeof filter?.costType === 'string' ? filter.costType : null }),
     }];
   }));
   const period = saved?.expensePeriod;

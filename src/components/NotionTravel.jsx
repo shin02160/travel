@@ -442,7 +442,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
     }
   });
   const { expenseView, expensePeriod, expenseDrilldown, opened } = view;
-  const { query = '', category = null } = view.filters[tab] ?? {};
+  const { query = '', category = null, costType = null } = view.filters[tab] ?? {};
   useEffect(() => {
     try {
       saveTripViewState(data.trip.id, view, window.sessionStorage);
@@ -470,9 +470,13 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
   const filterField = FILTER_FIELDS[tab];
   const categoryOf = item => expenseCategory(item.fields[filterField]);
   const categories = filterField ? [...new Set(historyItems.map(categoryOf))] : [];
+  const costTypeOf = item => item.fields.비용구분?.trim() || '미지정';
+  const costTypes = isExpenses ? [...new Set(historyItems.map(costTypeOf))] : [];
   const search = query.trim().toLowerCase();
   const filtered = historyItems.filter(item =>
-    (category === null || categoryOf(item) === category) && item.title.toLowerCase().includes(search));
+    (category === null || categoryOf(item) === category) &&
+    (!isExpenses || costType === null || costTypeOf(item) === costType) &&
+    item.title.toLowerCase().includes(search));
   let rows = filtered;
   if (tab === 'bookings') rows = sortByDisplayOrder(filtered, compareBookingUseDate);
   if (isExpenses) rows = sortByDisplayOrder(filtered);
@@ -483,7 +487,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
   const openExpenseHistory = (name = null) => {
     setView(previous => ({
       ...previous,
-      filters: { ...previous.filters, expenses: { query: '', category: name } },
+      filters: { ...previous.filters, expenses: { query: '', category: name, costType: null } },
       expenseDrilldown: name !== null, expenseView: 'history',
     }));
     document.getElementById('expense-tab-history').focus();
@@ -555,13 +559,24 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
                   ))}
                 </div>
               )}
+              {costTypes.length > 0 && (
+                <div role="group" aria-label="비용구분 필터" className="travel-reader-chips">
+                  <span className="travel-reader-chip-label">비용구분</span>
+                  <button type="button" aria-pressed={costType === null} onClick={() => setFilter({ costType: null })}>전체</button>
+                  {costTypes.map(option => (
+                    <button key={option} type="button" aria-pressed={costType === option}
+                      onClick={() => setFilter({ costType: option })}>{option}</button>
+                  ))}
+                </div>
+              )}
               {!shoppingUnconfigured && (
                 <label className="travel-reader-filter">
                   <Mark name="search" /><input type="search" aria-label="제목 검색" placeholder="제목 검색" value={query} onChange={event => setFilter({ query: event.target.value })} />
                 </label>
               )}
               {shoppingUnconfigured && <p className="travel-empty">쇼핑 리스트가 아직 연결되지 않았습니다.</p>}
-              {!shoppingUnconfigured && rows.length === 0 && <p className="travel-empty">{search ? '검색 결과가 없습니다.' : '등록된 항목이 없습니다.'}</p>}
+              {!shoppingUnconfigured && rows.length === 0 && <p className="travel-empty">{search || category !== null || (isExpenses && costType !== null)
+                ? '조건에 맞는 항목이 없습니다.' : '등록된 항목이 없습니다.'}</p>}
               {tab === 'schedule' && <Timeline rows={rows} />}
               {!showStatistics && tab !== 'schedule' && rows.length > 0 && <RecordList rows={rows} tab={tab} tripId={data.trip.id}
                 opened={opened} onToggle={toggleItem} />}
