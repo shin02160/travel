@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { Icon } from '../icons.jsx';
 import { chooseTrips, datePart, tripCalendar } from '../todaySchedule.js';
 import { formatDateTime, formatLocalTimestamp } from '../dateDisplay.js';
-import { calculateExpenseStatistics, expenseCategory } from '../expenseStatistics.js';
+import { calculateExpenseStatistics, expenseCategory, expenseCostType } from '../expenseStatistics.js';
 import { compareBookingUseDate, sortByDisplayOrder } from '../displayOrder.js';
 import { readTripViewState, saveTripViewState } from '../tripViewState.js';
 import { sortTripList } from '../tripListOrder.js';
@@ -470,7 +470,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
   const filterField = FILTER_FIELDS[tab];
   const categoryOf = item => expenseCategory(item.fields[filterField]);
   const categories = filterField ? [...new Set(historyItems.map(categoryOf))] : [];
-  const costTypeOf = item => item.fields.비용구분?.trim() || '미지정';
+  const costTypeOf = item => expenseCostType(item.fields.비용구분);
   const costTypes = isExpenses ? [...new Set(historyItems.map(costTypeOf))] : [];
   const search = query.trim().toLowerCase();
   const filtered = historyItems.filter(item =>
@@ -484,11 +484,11 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
     if (nextTab === tab) return;
     onSelectTab(nextTab);
   };
-  const openExpenseHistory = (name = null) => {
+  const openExpenseHistory = (name = null, costType = null) => {
     setView(previous => ({
       ...previous,
-      filters: { ...previous.filters, expenses: { query: '', category: name, costType: null } },
-      expenseDrilldown: name !== null, expenseView: 'history',
+      filters: { ...previous.filters, expenses: { query: '', category: name, costType } },
+      expenseDrilldown: name !== null || costType !== null, expenseView: 'history',
     }));
     document.getElementById('expense-tab-history').focus();
   };

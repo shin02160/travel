@@ -4,6 +4,20 @@ export function expenseCategory(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : '미분류';
 }
 
+export function expenseCostType(value) {
+  const name = typeof value === 'string' ? value.trim() : '';
+  if (name === '공동' || name === '공금') return '공동';
+  return name === '개인' ? '개인' : '미지정';
+}
+
+function breakdown(totals, total) {
+  const hasNegativeCategory = [...totals.values()].some(amount => amount < 0);
+  const showRatio = total > 0 && !hasNegativeCategory;
+  const categories = [...totals].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
+    .map(([name, amount]) => ({ name, amount, ratio: showRatio ? amount / total : null }));
+  return { categories, hasNegativeCategory, showRatio };
+}
+
 function wonAmount(expense) {
   const { fields, posting } = expense;
   let amount = fields['원화 확정액'];
@@ -24,6 +38,11 @@ export function calculateExpenseStatistics(expenses, budgetValue, { start = '', 
   const includedIds = new Set();
   const missingCurrencies = new Map();
   const totals = new Map();
+  const costTypes = [
+    { costType: '공동', name: '공금', total: null, count: 0, totals: new Map() },
+    { costType: '개인', name: '개인', total: null, count: 0, totals: new Map() },
+    { costType: '미지정', name: '미지정', total: null, count: 0, totals: new Map() },
+  ];
   let total = 0;
   let missingDate = 0;
   let missingAmount = 0;
@@ -49,13 +68,14 @@ export function calculateExpenseStatistics(expenses, budgetValue, { start = '', 
     includedIds.add(id);
     const category = expenseCategory(fields.분류);
     totals.set(category, (totals.get(category) ?? 0) + amount);
+    const group = costTypes.find(group => group.costType === expenseCostType(fields.비용구분));
+    group.total = (group.total ?? 0) + amount;
+    group.count++;
+    group.totals.set(category, (group.totals.get(category) ?? 0) + amount);
     total += amount;
   }
 
-  const hasNegativeCategory = [...totals.values()].some(amount => amount < 0);
-  const showRatio = total > 0 && !hasNegativeCategory;
-  const categories = [...totals].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
-    .map(([name, amount]) => ({ name, amount, ratio: showRatio ? amount / total : null }));
+  const showCostRatio = total > 0 && costTypes.every(group => group.total === null || group.total >= 0);
   const budget = Number.isFinite(budgetValue) && budgetValue >= 0 ? Math.round(budgetValue) : null;
   const canCompare = budget > 0 && includedIds.size > 0;
   return {
@@ -63,6 +83,10 @@ export function calculateExpenseStatistics(expenses, budgetValue, { start = '', 
     budget,
     usage: canCompare ? total / budget : null,
     remaining: canCompare ? budget - total : null,
-    categories, includedIds, missingDate, missingAmount, missingCurrencies, hasNegativeCategory, showRatio,
+    ...breakdown(totals, total), includedIds, missingDate, missingAmount, missingCurrencies,
+    costTypes: costTypes.map(({ totals, ...group }) => ({
+      ...group, ratio: showCostRatio && group.total !== null ? group.total / total : null,
+      ...breakdown(totals, group.total),
+    })),
   };
 }

@@ -10,6 +10,13 @@
 .travel-reader .expense-stats-tabs button { border-color: transparent; background: transparent; }
 .travel-reader .expense-stats-tabs button[aria-selected="true"] { background: var(--primary); color: #fff; }
 .expense-statistics { display: grid; gap: 14px; }
+.expense-stats-cost-types { display: grid; gap: 10px; }
+.expense-stats-cost-types :is(h3, p) { margin: 0; }
+.expense-stats-cost-types > button { justify-self: start; }
+.expense-stats-cost-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 10px; }
+.travel-reader .expense-stats-cost-card { display: grid; gap: 6px; text-align: start; min-width: 0; }
+.expense-stats-cost-card strong { font-size: clamp(20px, 2.5vw, 27px); font-variant-numeric: tabular-nums; }
+.expense-stats-cost-card small { font-variant-numeric: tabular-nums; }
 .expense-stats-filters { display: grid; gap: 8px; justify-items: start; }
 .expense-stats-dates { display: flex; flex-wrap: wrap; gap: 8px 12px; width: 100%; }
 .expense-stats-dates label { display: grid; gap: 4px; max-width: 100%; }

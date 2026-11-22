@@ -15,7 +15,7 @@ function categoryColor(name) {
   return colors.get(name) ?? extraColors[hash % extraColors.length];
 }
 
-function SpendingBreakdown({ stats, onCategory }) {
+function SpendingBreakdown({ stats, onCategory, label = '전체' }) {
   const [highlight, setHighlight] = useState(null);
   const active = stats.categories.find(category => category.name === highlight);
   const segments = [];
@@ -29,7 +29,7 @@ function SpendingBreakdown({ stats, onCategory }) {
 
   return (
     <section className="travel-reader-card" aria-labelledby="expense-breakdown-title">
-      <h3 id="expense-breakdown-title">항목별 지출 비율</h3>
+      <h3 id="expense-breakdown-title">{label === '전체' ? '' : `${label} · `}항목별 지출 비율</h3>
       {!stats.showRatio && (
         <p>{stats.hasNegativeCategory ? '비율 표시 불가: 환불이 지출액을 초과한 항목이 있습니다.' : '표시할 지출 비율이 없습니다.'}</p>
       )}
@@ -59,7 +59,7 @@ function SpendingBreakdown({ stats, onCategory }) {
               })}
             </svg>
             <div className="expense-stats-donut-label" aria-hidden="true">
-              <span>{active?.name ?? '총지출'}</span>
+              <span>{active?.name ?? `${label === '전체' ? '' : `${label} `}총지출`}</span>
               <strong>{currency.format(active?.amount ?? stats.total)}</strong>
               {active && <span>{percent.format(active.ratio)}</span>}
             </div>
@@ -90,6 +90,9 @@ function SpendingBreakdown({ stats, onCategory }) {
 }
 
 export default function ExpenseStatistics({ trip, stats, period, onPeriodChange, onCategory, onHistory, lastRead }) {
+  const [costType, setCostType] = useState(null);
+  const selected = stats.costTypes.find(group => group.costType === costType);
+  const displayStats = selected ?? stats;
   const { start, end } = period;
   const invalidRange = start && end && start > end;
   const filtered = start || end;
@@ -119,12 +122,30 @@ export default function ExpenseStatistics({ trip, stats, period, onPeriodChange,
           </dl>
           {stats.missingAmount > 0 && <p className="expense-stats-note" role="status" data-testid="expense-statistics-incomplete-fx">환산할 수 없는 지출 {stats.missingAmount}건을 원화 합계에서 제외했습니다. {missingCurrencies}</p>}
           {stats.missingDate > 0 && <p className="expense-stats-note">결제일이 없는 {stats.missingDate}건은 기간 집계에서 제외했습니다.</p>}
-          {stats.total === null ? (
+          <section className="expense-stats-cost-types" aria-labelledby="expense-cost-title">
+            <h3 id="expense-cost-title">공금·개인 지출</h3>
+            <p>선택한 기간의 결제완료 지출에서 환불을 반영한 원화 금액입니다. 공동 비용은 공금으로 집계합니다.</p>
+            {stats.costTypes.find(group => group.costType === '미지정')?.count > 0 && <p>비용구분이 비어 있거나 알려진 값이 아닌 항목은 미지정에 포함됩니다.</p>}
+            <button type="button" aria-pressed={costType === null} onClick={() => setCostType(null)}>전체 통계</button>
+            <div className="expense-stats-cost-grid" role="group" aria-label="비용구분별 통계 선택">
+              {stats.costTypes.map(group => <button key={group.costType} type="button"
+                className="travel-reader-card expense-stats-cost-card" aria-pressed={costType === group.costType}
+                onClick={() => setCostType(group.costType)}>
+                <span>{group.name} 지출</span>
+                <strong>{group.total === null ? '—' : currency.format(group.total)}</strong>
+                <small>{group.count}건 · 전체 대비 {group.ratio === null ? '—' : percent.format(group.ratio)}</small>
+              </button>)}
+            </div>
+            {selected && <p>{selected.name} 기준의 항목별 통계입니다. 상단 예산 비교는 공금·개인을 합한 전체 지출 기준입니다.</p>}
+            {selected && <button type="button" onClick={() => onCategory(null, costType)}>{selected.name} 지출 내역 보기</button>}
+          </section>
+          {displayStats.total === null ? (
             <div className="travel-empty">
-              <p>{stats.missingAmount ? '이 범위에서 원화로 집계할 수 있는 지출이 없습니다.' : '이 범위에 집계할 결제완료 지출이 없습니다.'}</p>
+              <p>{selected ? `이 범위에 집계할 ${selected.name} 지출이 없습니다.` : stats.missingAmount ? '이 범위에서 원화로 집계할 수 있는 지출이 없습니다.' : '이 범위에 집계할 결제완료 지출이 없습니다.'}</p>
               <button type="button" onClick={onHistory}>지출 내역 보기</button>
             </div>
-          ) : <SpendingBreakdown stats={stats} onCategory={onCategory} />}
+          ) : <SpendingBreakdown key={costType ?? 'all'} stats={displayStats} label={selected?.name ?? '전체'}
+            onCategory={name => onCategory(name, costType)} />}
         </>
       )}
     </div>
