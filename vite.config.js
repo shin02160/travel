@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
           if (req.url?.split('?')[0] !== '/api/weather') return next()
-          return handleWeather(req, res).catch(next)
+          return handleWeather(req, res, fetch, env).catch(next)
         })
         server.middlewares.use((req, res, next) => {
           const path = req.url?.split('?')[0]

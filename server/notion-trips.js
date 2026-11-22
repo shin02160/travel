@@ -1,62 +1,29 @@
-import { setTimeout as delay } from 'node:timers/promises';
-import { tripPinConfig, tripSessionExpiry, unlockTrip } from './trip-pin.js';
-import { citiesForTrip, INFO_CATEGORIES } from '../src/destinationCities.js';
+import { NotionError, propertyValue, belongsTo, belongsToTrip, notionReader } from './notion-reader.js';
+import { loadCities, citiesForPage, publicCity, CityError } from './notion-cities.js';
+import { calendarZone } from '../src/destinationCities.js';
+import { tripPinConfig, tripSessionExpiry, tripSessionCandidate, prepareTripUnlock, unlockTrip } from './trip-pin.js';
+import { INFO_CATEGORIES } from '../src/destinationCities.js';
+import { fetchPhoto, galleryPhotos, selectCover, sendPhoto } from './trip-photos.js';
 
 const ID = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const SECTIONS = {
   schedule: ['일정명', '일시', '구분', '장소', '진행상태'],
   bookings: ['예약명', '예약유형', '예약상태', '이용일', '결제상태'],
   budgets: ['예산항목', '분류', '예산 KRW', '사용금액', '잔액'],
-  expenses: ['지출명', '분류', '결제일', '결제자', '결제수단', '정산여부', '통화', '현지 금액', '원화 확정액', '집계 금액'],
+  expenses: ['지출명', '분류', '비용구분', '결제일', '결제자', '결제수단', '정산여부', '통화', '현지 금액', '원화 확정액', '집계 금액'],
   receipts: ['영수증명', '처리상태'],
   checklist: ['할 일', '분류', '상태', '단계', '기한'],
   shopping: ['품목', '분류', '유형', '상태', '우선순위', '구매방법', '매장', '위치', '추천품목', '구매예정일', '단계', '기한', '메모'],
 };
 const TRIP_FIELDS = ['여행명', '여행지', '여행기간', '상태', '메모', '총예산', '총지출', '잔여예산'];
+const BOOKING_DETAIL_FIELDS = ['예약처', '장소', '숙소 주소', '장소 주소', '통화', '예약금액', '취소기한', '취소·환불 조건'];
 const REQUIRED_SOURCES = ['trips', ...Object.keys(SECTIONS).filter(key => key !== 'shopping')];
-const NOTION_API = 'https://api.notion.com/v1';
-const ITEM_BLOCK_TYPES = new Set([
-  'paragraph', 'heading_1', 'heading_2', 'heading_3', 'to_do', 'bulleted_list_item',
-  'numbered_list_item', 'toggle', 'quote', 'callout', 'divider',
-]);
-
-class NotionError extends Error {
-  constructor(status) {
-    super('Notion request failed');
-    this.status = status;
-  }
-}
-
 function respond(res, status, body) {
   res.statusCode = status;
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.end(JSON.stringify(body));
-}
-
-function propertyValue(property) {
-  const type = property?.type;
-  const value = property?.[type];
-  switch (type) {
-    case 'title':
-    case 'rich_text':
-      return Array.isArray(value) ? value.map(part => part.plain_text ?? '').join('') : null;
-    case 'select':
-    case 'status':
-      return value?.name ?? null;
-    case 'date':
-      return value?.start ? [value.start, value.end].filter(Boolean).join(' ~ ') : null;
-    case 'number':
-      return value ?? null;
-    case 'checkbox':
-      return typeof value === 'boolean' ? value : null;
-    case 'formula':
-    case 'rollup':
-      return value?.type === 'number' ? value.number : null;
-    default:
-      return null;
-  }
 }
 
 function project(page, [title, ...fields]) {
@@ -66,6 +33,18 @@ function project(page, [title, ...fields]) {
     title: propertyValue(page.properties[title]) || '제목 없음',
     fields: Object.fromEntries(fields.map(name => [name, propertyValue(page.properties[name])])),
   };
+}
+
+function bookingDetails(page) {
+  const details = {};
+  for (const name of BOOKING_DETAIL_FIELDS) {
+    const value = propertyValue(page.properties[name]);
+    if (name === '예약금액' ? Number.isFinite(value) : typeof value === 'string' && value.trim()) {
+      details[name] = typeof value === 'string' ? value.trim() : value;
+    }
+  }
+  if (details['숙소 주소'] === details['장소 주소']) delete details['장소 주소'];
+  return details;
 }
 
 function savedMapUrl(property) {
@@ -94,19 +73,6 @@ function scheduleDetails(page) {
   };
 }
 
-function belongsTo(page, source) {
-  return page?.object === 'page' && ID.test(page.id) &&
-    page.parent?.type === 'data_source_id' && page.parent.data_source_id === source &&
-    page.archived !== true && page.is_archived !== true && page.in_trash !== true &&
-    page.properties && typeof page.properties === 'object';
-}
-
-function belongsToTrip(page, tripId) {
-  const relation = page.properties['여행'];
-  return relation?.type === 'relation' && relation.has_more === false &&
-    Array.isArray(relation.relation) && relation.relation.length === 1 && relation.relation[0]?.id === tripId;
-}
-
 function destinationSourceUrl(property) {
   try {
     const url = new URL(property?.url);
@@ -118,132 +84,6 @@ function destinationSourceUrl(property) {
 
 function bodyText(blocks) {
   return blocks.flatMap(block => [block.text, ...bodyText(block.children)]).filter(Boolean).join('\n');
-}
-
-function notionReader(token, fetcher, signal) {
-  async function request(path, body) {
-    for (let attempt = 0; ; attempt++) {
-      const response = await fetcher(`${NOTION_API}${path}`, {
-        method: body ? 'POST' : 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Notion-Version': '2026-03-11',
-          'Content-Type': 'application/json',
-        },
-        body: body ? JSON.stringify(body) : undefined,
-        redirect: 'error',
-        signal,
-      });
-      if (response.ok) return response.json();
-      if (attempt === 2 || ![429, 502, 503, 504].includes(response.status)) {
-        throw new NotionError(response.status);
-      }
-      const retryAfter = response.headers.get('Retry-After');
-      const wait = retryAfter === null ? 250 * 2 ** attempt : Number(retryAfter) * 1000;
-      if (!Number.isFinite(wait) || wait < 0 || wait > 3000) throw new NotionError(response.status);
-      await delay(wait, undefined, { signal });
-    }
-  }
-
-  async function query(source, tripId, sorts, city) {
-    const pages = new Map();
-    const seen = new Set();
-    let cursor;
-    const tripFilter = tripId ? { property: '여행', relation: { contains: tripId } } : undefined;
-    const filter = city ? { and: [tripFilter, { property: '도시 코드', select: { equals: city } }] } : tripFilter;
-    do {
-      const result = await request(`/data_sources/${source}/query`, {
-        page_size: 100, start_cursor: cursor, filter, sorts,
-      });
-      if (!Array.isArray(result.results) || typeof result.has_more !== 'boolean' ||
-          result.request_status?.type === 'incomplete') throw new NotionError(502);
-      for (const page of result.results) {
-        if (belongsTo(page, source) && (!tripId || belongsToTrip(page, tripId)) &&
-            (!city || propertyValue(page.properties['도시 코드']) === city)) pages.set(page.id, page);
-      }
-      if (!result.has_more) return [...pages.values()];
-      cursor = result.next_cursor;
-      if (typeof cursor !== 'string' || !cursor || seen.has(cursor) || seen.size >= 100) {
-        throw new NotionError(502);
-      }
-      seen.add(cursor);
-    } while (cursor);
-  }
-
-  async function readItemBody(pageId) {
-    let remaining = 300;
-    let partial = false;
-
-    async function children(parentId, depth) {
-      const blocks = [];
-      const seen = new Set();
-      let cursor;
-      do {
-        if (depth > 4 || remaining === 0) {
-          partial = true;
-          break;
-        }
-        const params = new URLSearchParams({ page_size: String(Math.min(100, remaining)) });
-        if (cursor) params.set('start_cursor', cursor);
-        const result = await request(`/blocks/${parentId}/children?${params}`);
-        if (!Array.isArray(result.results) || typeof result.has_more !== 'boolean') throw new NotionError(502);
-        for (const block of result.results) {
-          if (remaining === 0) {
-            partial = true;
-            break;
-          }
-          remaining--;
-          if (block?.archived || block?.is_archived || block?.in_trash) continue;
-          if (!ID.test(block?.id) || !ITEM_BLOCK_TYPES.has(block.type)) {
-            partial = true;
-            continue;
-          }
-          const richText = block[block.type]?.rich_text;
-          const value = Array.isArray(richText) ? richText.map(part => part?.plain_text ?? '').join('') : '';
-          blocks.push({
-            id: block.id,
-            type: block.type,
-            text: value,
-            checked: block.type === 'to_do' && block.to_do?.checked === true,
-            children: block.has_children === true ? await children(block.id, depth + 1) : [],
-          });
-        }
-        if (!result.has_more) break;
-        cursor = result.next_cursor;
-        if (typeof cursor !== 'string' || !cursor || seen.has(cursor) || seen.size >= 20) throw new NotionError(502);
-        seen.add(cursor);
-      } while (cursor);
-      return blocks;
-    }
-
-    const blocks = await children(pageId, 0);
-    return { blocks, partial };
-  }
-
-  async function findPackingPage(tripId) {
-    const matches = new Set();
-    const seen = new Set();
-    let cursor;
-    do {
-      const params = new URLSearchParams({ page_size: '100' });
-      if (cursor) params.set('start_cursor', cursor);
-      const result = await request(`/blocks/${tripId}/children?${params}`);
-      if (!Array.isArray(result.results) || typeof result.has_more !== 'boolean') throw new NotionError(502);
-      for (const block of result.results) {
-        if (block?.type === 'child_page' && ID.test(block.id) &&
-            block.child_page?.title === '공통 준비물 간편 체크' &&
-            !block.archived && !block.in_trash && !block.is_archived) matches.add(block.id);
-      }
-      if (!result.has_more) break;
-      cursor = result.next_cursor;
-      if (typeof cursor !== 'string' || !cursor || seen.has(cursor) || seen.size >= 20) throw new NotionError(502);
-      seen.add(cursor);
-    } while (cursor);
-    if (matches.size > 1) throw new NotionError(502);
-    return [...matches][0] ?? null;
-  }
-
-  return { query, readPage: id => request(`/pages/${id}`), readItemBody, findPackingPage };
 }
 
 export async function handleTrips(req, res, env = process.env, fetcher = fetch, { behindVercel = false } = {}) {
@@ -259,14 +99,23 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
   const itemIds = url.searchParams.getAll('itemId');
   const itemSections = url.searchParams.getAll('section');
   const cityIds = url.searchParams.getAll('city');
-  const itemRequest = itemIds.length > 0 || itemSections.length > 0 || cityIds.length > 0;
+  const photoIds = url.searchParams.getAll('photoId');
+  const photoFiles = url.searchParams.getAll('file');
+  const photoParams = photoIds.length > 0 || photoFiles.length > 0;
+  const itemRequest = itemIds.length > 0 || itemSections.length > 0 || cityIds.length > 0 || photoParams;
   const itemSection = itemSections[0];
   const packingRequest = itemSections.length === 1 && itemSection === 'packing' && itemIds.length === 0;
   const infoRequest = itemSections.length === 1 && itemSection === 'info' && itemIds.length === 0 &&
-    cityIds.length === 1 && citiesForTrip(tripId).some(city => city.id === cityIds[0]);
+    cityIds.length === 1 && /^[A-Z]{2}_[A-Z0-9_]+$/.test(cityIds[0]);
   const recordRequest = itemIds.length === 1 && ID.test(itemIds[0]) &&
-    itemSections.length === 1 && ['checklist', 'shopping'].includes(itemSection);
-  if (itemRequest && (!tripId || !(infoRequest || (cityIds.length === 0 && (packingRequest || recordRequest))))) {
+    itemSections.length === 1 && ['bookings', 'checklist', 'shopping'].includes(itemSection);
+  const photoRequest = itemSections.length === 1 && itemSection === 'photos' && !itemIds.length && !cityIds.length &&
+    (!photoParams || (photoIds.length === 1 && ID.test(photoIds[0]) &&
+      photoFiles.length === 1 && /^(0|[1-9][0-9]{0,5})$/.test(photoFiles[0])));
+  const coverRequest = itemSections.length === 1 && itemSection === 'cover' &&
+    [...url.searchParams.keys()].every(key => key === 'section' || key === 'tripId');
+  const otherItemRequest = !photoParams && (infoRequest || (!cityIds.length && (packingRequest || recordRequest)));
+  if (itemRequest && (!tripId || !(coverRequest || photoRequest || otherItemRequest))) {
     return respond(res, 400, { error: 'invalid_item_request' });
   }
   const methods = tripId && !itemRequest ? ['GET', 'POST'] : ['GET'];
@@ -275,11 +124,15 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
     return respond(res, 405, { error: 'method_not_allowed' });
   }
 
-  const config = tripId ? tripPinConfig(tripId, env) : null;
-  if (req.method === 'POST') return unlockTrip(req, res, respond, tripId, config, env, fetcher, behindVercel);
-  const expiresAt = tripId ? tripSessionExpiry(req, tripId, config) : 0;
-  if (tripId && !config) return respond(res, 403, { error: 'trip_pin_not_configured' });
-  if (tripId && !expiresAt) return respond(res, 401, { error: 'trip_pin_required' });
+  const needsPin = Boolean(tripId && !coverRequest);
+  let expiresAt = 0;
+  let preparedPin;
+  if (req.method === 'POST') {
+    preparedPin = await prepareTripUnlock(req, res, respond, tripId, env, fetcher, behindVercel);
+    if (typeof preparedPin !== 'string') return;
+  } else if (needsPin && !tripSessionCandidate(req, tripId, env)) {
+    return respond(res, 401, { error: 'trip_pin_required' });
+  }
 
   const token = env.NOTION_TRAVEL_TOKEN?.trim();
   const sourceKeys = env.NOTION_TRAVEL_SHOPPING_SOURCE_ID?.trim()
@@ -288,37 +141,108 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
     key, env[`NOTION_TRAVEL_${key.toUpperCase()}_SOURCE_ID`]?.trim().toLowerCase(),
   ]));
   const infoSource = env.NOTION_TRAVEL_INFO_SOURCE_ID?.trim().toLowerCase();
+  const photoSource = env.NOTION_TRAVEL_PHOTOS_SOURCE_ID?.trim().toLowerCase();
+  const invalidOptionalSource = source => source && (!ID.test(source) || Object.values(sources).includes(source));
   if (!token || !ID.test(sources.trips) || (tripId && (
-    infoRequest ? (infoSource && (!ID.test(infoSource) || Object.values(sources).includes(infoSource))) :
+    photoRequest || coverRequest ? (invalidOptionalSource(photoSource) || (photoSource && photoSource === infoSource)) :
+    infoRequest ? invalidOptionalSource(infoSource) :
       (sourceKeys.some(key => !ID.test(sources[key])) || new Set(Object.values(sources)).size !== sourceKeys.length)
   ))) {
     return respond(res, 503, { error: 'notion_not_configured' });
   }
+  if (coverRequest && !photoSource) return respond(res, 404, { error: 'photo_not_found' });
 
   const sendData = body => expiresAt * 1000 > Date.now()
     ? respond(res, 200, { expiresAt, ...body })
     : respond(res, 401, { error: 'trip_pin_required' });
 
-  const reader = notionReader(token, fetcher, AbortSignal.timeout(15000));
+  const signal = AbortSignal.timeout(15000);
+  const reader = notionReader(token, fetcher, signal);
+  const readPage = id => reader.readPage(id).catch(error => {
+    if (error instanceof NotionError && error.status === 404) return null;
+    throw error;
+  });
   try {
     if (!tripId) {
       const trips = await reader.query(sources.trips);
       return respond(res, 200, {
-        trips: trips.map(page => project(page, TRIP_FIELDS.slice(0, 4))),
+        trips: await Promise.all(trips.map(async page => {
+          const summary = project(page, TRIP_FIELDS.slice(0, 4));
+          try {
+            const cities = citiesForPage(page, await loadCities(env, fetcher, signal));
+            const [start, end = start] = summary.fields.여행기간?.split(' ~ ') ?? [];
+            summary.calendarZone = calendarZone(cities, start, end);
+          } catch (error) {
+            if (!(error instanceof CityError)) throw error;
+            summary.calendarZone = null;
+          }
+          return summary;
+        })),
       });
     }
 
-    const trip = await reader.readPage(tripId).catch(error => {
-      if (error instanceof NotionError && error.status === 404) return null;
-      throw error;
-    });
+    const trip = await readPage(tripId);
     if (!belongsTo(trip, sources.trips) || trip.id !== tripId) {
       return respond(res, 404, { error: 'trip_not_found' });
     }
 
+    if (needsPin) {
+      const policyProperty = trip.properties['PIN 방식'];
+      if (policyProperty && policyProperty.type !== 'select') {
+        return respond(res, 403, { error: 'trip_pin_not_configured' });
+      }
+      const policy = policyProperty?.select?.name;
+      if (policy === '접근 차단') return respond(res, 403, { error: 'trip_access_blocked' });
+      const date = trip.properties.여행기간;
+      const config = tripPinConfig(tripId, env, {
+        policy, start: date?.type === 'date' ? date.date?.start : null,
+        end: date?.type === 'date' ? date.date?.end : null,
+      });
+      if (!config) return respond(res, 403, { error: 'trip_pin_not_configured' });
+      if (req.method === 'POST') return unlockTrip(req, res, respond, tripId, config, env, fetcher, behindVercel, preparedPin);
+      expiresAt = tripSessionExpiry(req, tripId, config);
+      if (!expiresAt) return respond(res, 401, { error: 'trip_pin_required' });
+    }
+
+    if (coverRequest) {
+      const pages = await reader.query(photoSource, tripId);
+      const cover = selectCover(pages, tripId, propertyValue);
+      if (!cover) return respond(res, 404, { error: 'photo_not_found' });
+      const image = await fetchPhoto(async () => {
+        // Reapply selection if a signed attachment expires during the request.
+        const latest = await reader.query(photoSource, tripId);
+        const selected = selectCover(latest, tripId, propertyValue);
+        return selected?.photo.id === cover.photo.id ? selected.page : null;
+      }, cover.index, fetcher, signal, { publicCover: true, initialPage: cover.page });
+      if (!image) return respond(res, 404, { error: 'photo_not_found' });
+      return await sendPhoto(res, image);
+    }
+
+    if (photoRequest) {
+      if (!photoParams) {
+        const pages = photoSource ? await reader.query(photoSource, tripId) : [];
+        return sendData({ ...galleryPhotos(pages, tripId, propertyValue), configured: Boolean(photoSource) });
+      }
+      const photoId = photoIds[0].toLowerCase();
+      if (!photoSource) return respond(res, 404, { error: 'photo_not_found' });
+      const image = await fetchPhoto(async () => {
+        const page = await readPage(photoId);
+        return belongsTo(page, photoSource) && page.id === photoId && belongsToTrip(page, tripId) ? page : null;
+      }, Number(photoFiles[0]), fetcher, signal);
+      if (!image) return respond(res, 404, { error: 'photo_not_found' });
+      if (expiresAt * 1000 <= Date.now()) {
+        await image.response.body.cancel();
+        return respond(res, 401, { error: 'trip_pin_required' });
+      }
+      return await sendPhoto(res, image);
+    }
+
     if (infoRequest) {
+      const cities = citiesForPage(trip, await loadCities(env, fetcher, signal));
+      const city = cities.find(city => city.id === cityIds[0]);
+      if (!city) return respond(res, 403, { error: 'city_not_in_trip' });
       if (!infoSource) return sendData({ cards: [], configured: false });
-      const pages = await reader.query(infoSource, tripId, undefined, cityIds[0]);
+      const pages = await reader.query(infoSource, tripId, undefined, city);
       const cards = await Promise.all(INFO_CATEGORIES.map(async category => {
         const matches = pages.filter(page => propertyValue(page.properties.분류) === category);
         if (matches.length > 1) {
@@ -359,17 +283,16 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
       const itemId = itemIds[0].toLowerCase();
       const source = sources[itemSection];
       if (!source) return respond(res, 404, { error: 'item_not_found' });
-      const item = await reader.readPage(itemId).catch(error => {
-        if (error instanceof NotionError && error.status === 404) return null;
-        throw error;
-      });
+      const item = await readPage(itemId);
       if (!belongsTo(item, source) || item.id !== itemId || !belongsToTrip(item, tripId)) {
         return respond(res, 404, { error: 'item_not_found' });
       }
+      if (itemSection === 'bookings') return sendData({ fields: bookingDetails(item), sourceId: itemId });
       return sendData(await reader.readItemBody(itemId));
     }
 
     const sections = {};
+    const checklistShopping = [];
     for (const [key, fields] of Object.entries(SECTIONS)) {
       if (key === 'shopping' && !sources.shopping) {
         sections.shopping = null;
@@ -378,7 +301,14 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
       const sorts = key === 'expenses' ? [{ timestamp: 'created_time', direction: 'ascending' }] : undefined;
       const pages = await reader.query(sources[key], tripId, sorts);
       const expenses = key === 'receipts' ? new Map(sections.expenses.map(row => [row.id, row.title])) : null;
-      sections[key] = pages.map(page => {
+      sections[key] = pages.flatMap(page => {
+        if (key === 'checklist' && propertyValue(page.properties.분류) === '쇼핑') {
+          checklistShopping.push({
+            ...project(page, ['할 일', ...SECTIONS.shopping.slice(1)]),
+            sourceSection: 'checklist',
+          });
+          return [];
+        }
         const row = project(page, fields);
         if (key === 'schedule') Object.assign(row, scheduleDetails(page));
         if (key === 'bookings' || key === 'expenses') {
@@ -406,17 +336,29 @@ export async function handleTrips(req, res, env = process.env, fetcher = fetch, 
             ? related.relation.map(entry => expenses.get(entry.id)).filter(Boolean).join(', ')
             : null;
         }
-        return row;
+        return [row];
       });
     }
+
+    if (checklistShopping.length) sections.shopping = [...(sections.shopping ?? []), ...checklistShopping];
 
     const bookingIds = new Set(sections.bookings.map(row => row.id));
     for (const event of sections.schedule) {
       event.bookingIds = [...new Set(event.bookingIds.filter(id => bookingIds.has(id)))];
     }
 
-    return sendData({ trip: project(trip, TRIP_FIELDS), sections });
+    let cities = [];
+    let citiesError = null;
+    try {
+      cities = citiesForPage(trip, await loadCities(env, fetcher, signal)).map(publicCity);
+    } catch (error) {
+      if (!(error instanceof CityError)) throw error;
+      citiesError = error.code;
+    }
+    return sendData({ trip: { ...project(trip, TRIP_FIELDS), cities, citiesError }, sections });
   } catch (error) {
+    if (res.headersSent || res.destroyed) return;
+    if (error instanceof CityError) return respond(res, error.status, { error: error.code });
     const status = error instanceof NotionError && error.status === 429 ? 503 : 502;
     return respond(res, status, { error: 'notion_unavailable' });
   }

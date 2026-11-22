@@ -2,11 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chooseTrips, planDay, shiftDate, tripCalendar } from '../src/todaySchedule.js';
 
-const macau = { id: '4136d8c5-8de1-81f4-a070-e07878964af0', fields: { 여행기간: '2026-12-05 ~ 2026-12-08' } };
-const shanghai = { id: '4136d8c5-8de1-81ce-a4c8-dbda8e993076', fields: { 여행기간: '2026-12-05' } };
+const macau = { cities: [{ zone: 'Asia/Macau' }, { zone: 'Asia/Shanghai' }], id: '4136d8c5-8de1-81f4-a070-e07878964af0', fields: { 여행기간: '2026-12-05 ~ 2026-12-08' } };
+const shanghai = { cities: [{ zone: 'Asia/Shanghai' }], id: '4136d8c5-8de1-81ce-a4c8-dbda8e993076', fields: { 여행기간: '2026-12-05' } };
 const stamp = Date.parse;
 const row = (id, start, status = '예정', date = {}) => ({
   id, fields: { 일시: start, 진행상태: status }, date: { start, ...date },
+});
+
+test('domestic trips use Korean midnight and select the next trip and timed event', () => {
+  for (const id of ['41d6d8c5-8de1-81ca-a669-c3b27d75a996', '4176d8c5-8de1-81e2-8644-f3b66935e8e4']) {
+    const trip = { id, cities: [{ zone: 'Asia/Seoul' }], fields: { 여행기간: '2026-11-21' } };
+    const before = stamp('2026-11-20T14:59:59Z');
+    const midnight = stamp('2026-11-20T15:00:00Z');
+    const calendar = tripCalendar(trip, midnight);
+    assert.equal(calendar.zone, 'Asia/Seoul');
+    assert.equal(calendar.today, '2026-11-21');
+    assert.equal(chooseTrips([trip], before).next, trip);
+    assert.deepEqual(chooseTrips([trip], midnight).active, [trip]);
+    assert.equal(chooseTrips([trip], midnight).unknownZone, false);
+    assert.deepEqual(chooseTrips([trip], stamp('2026-11-21T15:00:00Z')).active, []);
+    assert.equal(planDay([row('train', '2026-11-21T06:05')], calendar.today, calendar.zone, midnight)
+      .next.stamp, stamp('2026-11-20T21:05:00Z'));
+  }
 });
 
 test('chooses trips at local midnight and includes both travel boundaries', () => {
@@ -15,7 +32,7 @@ test('chooses trips at local midnight and includes both travel boundaries', () =
   assert.deepEqual(chooseTrips([macau, shanghai], stamp('2026-12-04T16:00:00Z')).active, [macau, shanghai]);
   assert.deepEqual(chooseTrips([macau], stamp('2026-12-08T15:59:59Z')).active, [macau]);
   assert.deepEqual(chooseTrips([macau], stamp('2026-12-08T16:00:00Z')).active, []);
-  assert.equal(chooseTrips([{ ...macau, id: 'unknown' }], stamp('2026-12-05')).unknownZone, true);
+  assert.equal(chooseTrips([{ ...macau, id: 'unknown', cities: [] }], stamp('2026-12-05')).unknownZone, true);
   assert.equal(shiftDate('2026-12-31', 1), '2027-01-01');
 });
 

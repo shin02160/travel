@@ -4,6 +4,7 @@ export function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 1.
     plane: ['M2.5 19 L12 3 L21.5 19 L12 15.5 Z', 'M12 15.5 L12 3'],
     hotel: ['M3 9L12 2L21 9V20H3V9Z', 'M9 20V12H15V20'],
     music: ['M9 18V5l12-2v13', 'M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M18 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z'],
+    image: ['M3 4h18v16H3z', 'M3 16l5-5 4 4 3-3 6 6', 'M16 8h.01'],
     train: ['M4 4h16v12H4z', 'M8 20l4-4 4 4', 'M8 8h8', 'M8 12h8', 'M4 16h16'],
     map: ['M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3z', 'M9 4v13', 'M15 7v13'],
     home: ['M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M9 22V12h6v10'],
