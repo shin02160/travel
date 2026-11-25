@@ -23,6 +23,8 @@ export function readTripViewState(tripId, storage) {
   const opened = Array.isArray(saved?.opened) ? saved.opened.filter(id => typeof id === 'string' && ITEM_KEY.test(id)) : [];
   return {
     filters,
+    scheduleView: saved?.scheduleView === 'map' ? 'map' : 'timeline',
+    routeDate: saved?.routeDate === 'all' || (typeof saved?.routeDate === 'string' && saved.routeDate === datePart(saved.routeDate)) ? saved.routeDate : null,
     expenseView: saved?.expenseView === 'statistics' ? 'statistics' : 'history',
     expensePeriod: { start: datePart(period?.start) ?? '', end: datePart(period?.end) ?? '' },
     expenseDrilldown: saved?.expenseDrilldown === true,

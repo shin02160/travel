@@ -71,7 +71,7 @@ export function chooseTrips(trips, now) {
   return { active, next: next?.trip ?? null, unknownZone };
 }
 
-function eventStamp(value, zone) {
+export function eventStamp(value, zone) {
   if (!value?.match(TIME)) return null;
   if (/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)) {
     const stamp = Date.parse(value);
@@ -94,6 +94,28 @@ function eventStamp(value, zone) {
   }
 }
 
+export function scheduleTiming(row, zone) {
+  const [legacyStart, legacyEnd] = row.fields.일시?.split(' ~ ') ?? [];
+  const { start = legacyStart, end = legacyEnd, timeZone, allDay } = row.date ?? {};
+  const day = datePart(start);
+  const hasTime = typeof start === 'string' && start.includes('T');
+  const validTime = !hasTime || /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?$/.test(start);
+  const time = !allDay && validTime ? start?.match(TIME)?.[1] : null;
+  const effectiveZone = timeZone ?? zone;
+  const stamp = day && time && (!effectiveZone || validZone(effectiveZone)) ? eventStamp(start, effectiveZone) : null;
+  const invalidEndTime = typeof end === 'string' && end.includes('T') && !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?$/.test(end);
+  const invalidRange = end && (invalidEndTime || !datePart(end) || (day && datePart(end) < day) ||
+    (stamp !== null && end.includes('T') && eventStamp(end, effectiveZone) !== null && eventStamp(end, effectiveZone) < stamp));
+  const issue = !day ? '날짜 미정' : !validTime ? '시간 오류' : invalidRange ? '일정 기간 오류' : time && stamp === null ? '시간대·시각 미확인' : null;
+  return { row, start, end, day, time, stamp: issue ? null : stamp, allDay, issue };
+}
+
+export function compareScheduleEvents(a, b) {
+  const order = event => event.allDay ? 0 : event.time ? 1 : 2;
+  return order(a) - order(b) || (a.stamp ?? Infinity) - (b.stamp ?? Infinity) ||
+    (a.time ?? '').localeCompare(b.time ?? '') || a.row.id.localeCompare(b.row.id);
+}
+
 export function planDay(rows, day, zone, now) {
   if (!day) return { events: [], next: null };
   const events = rows.flatMap(row => {
@@ -105,10 +127,7 @@ export function planDay(rows, day, zone, now) {
     const ended = ENDED.has(row.fields.진행상태);
     return [{ row, time, end, stamp, allDay, passed: !ended && stamp !== null && stamp < now }];
   });
-  const order = event => event.allDay ? 0 : event.time ? 1 : 2;
-  events.sort((a, b) => order(a) - order(b) ||
-    (a.stamp ?? Infinity) - (b.stamp ?? Infinity) ||
-    (a.time ?? '').localeCompare(b.time ?? ''));
+  events.sort(compareScheduleEvents);
   return {
     events,
     next: events.find(event => event.stamp !== null && event.stamp >= now &&
