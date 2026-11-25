@@ -327,3 +327,8 @@ body { margin: 0; font-size: 14px; }
   .travel-reader-tabs button { width: 100%; text-align: start; }
   .travel-today-grid { grid-template-columns: minmax(0, 35fr) minmax(0, 65fr); align-items: start; }
 }
+.schedule-activity { margin: 6px 0; color: var(--text-secondary); font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
+.schedule-order-note { font-size: 13px; color: var(--text-secondary); }
+.schedule-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+.schedule-event-details { margin-top: 8px; }
+.schedule-event-details .route-row-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }

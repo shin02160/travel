@@ -437,9 +437,12 @@ test('detail verifies each data source and scopes every section to exactly one t
     '관련 예약': relation(visibleBooking.id, randomUUID()),
     '지도 URL': { type: 'url', url: 'https://www.google.com/maps/search/?api=1&query=Macau' },
     위도: { type: 'number', number: 0 }, 경도: { type: 'number', number: 113.5 },
+    활동: { type: 'rich_text', rich_text: [{ plain_text: ' 체크인 ' }] },
+    '동선 순서': { type: 'number', number: 10 },
   });
   event.url = 'https://www.notion.so/trip-event';
   const unsafeMap = row('schedule', { 일정명: title('다른 일정'), 여행: relation(tripId),
+    활동: { type: 'number', number: 5 }, '동선 순서': { type: 'number', number: 0 },
     '지도 URL': { type: 'url', url: 'https://maps.google.com.example.org/maps' } });
   const receipt = row('receipts', { 영수증명: title('교통 영수증'), 여행: relation(tripId),
     '관련 지출': relation(expense.id, randomUUID()), '증빙 이미지': title('private') });
@@ -502,6 +505,10 @@ test('detail verifies each data source and scopes every section to exactly one t
   assert.match(scheduled.sourceUrl, /^https:\/\/www\.notion\.so\/[a-f0-9]{32}$/);
   assert.match(scheduled.mapUrl, /^https:\/\/www\.google\.com\/maps\//);
   assert.deepEqual(scheduled.coordinates, { lat: 0, lng: 113.5, source: 'notion' });
+  assert.equal(scheduled.activity, '체크인');
+  assert.equal(scheduled.routeOrder, 10);
+  assert.equal(otherEvent.activity, null);
+  assert.equal(otherEvent.routeOrder, null);
   assert.equal(otherEvent.coordinates, null);
   assert.equal(otherEvent.mapUrl, null);
   assert.equal(res.body.sections.expenses[0].fields.결제자, '테스트 결제자');

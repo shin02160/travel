@@ -82,6 +82,9 @@ test('invalid dates/clocks/timezones cannot form routes; antimeridian positions 
   const positions = routeDisplayPositions(points);
   assert.equal(Math.abs(positions.get('a')[1] - positions.get('b')[1]), 2);
   assert.equal(points[1].lng, -179);
+  const nearby = Array.from({ length: 8 }, (_, i) => ({ id: String(i), lat: 51.51 + i * .001, lng: -.11 - i * .001 }));
+  const display = [...routeDisplayPositions(nearby).values()].map(position => position[1]);
+  assert.ok(Math.max(...display) - Math.min(...display) < .01, 'floating point cut must not wrap a nearby point around the world');
 });
 
 test('unresolved time blocks shortcuts for its day, invalid ranges stay listed, one point has no leg', () => {

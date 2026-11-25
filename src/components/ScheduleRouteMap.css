@@ -30,3 +30,8 @@
   .route-visit-list { max-height: 540px; overflow-y: auto; padding: 3px; }
   .route-map-canvas { height: 480px; }
 }
+.route-group-activities { padding-left: 20px; }
+.route-group-activities > li { margin-top: 10px; }
+.route-records { display: grid; gap: 10px; min-width: 0; }
+.route-records .travel-reader-card { overflow-wrap: anywhere; }
+.route-map-canvas .leaflet-popup-content a { display: inline-block; margin: 4px 8px 4px 0; }

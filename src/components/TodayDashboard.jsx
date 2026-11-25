@@ -3,6 +3,7 @@ import { Icon } from '../icons.jsx';
 import { planDay, shiftDate, tripCalendar } from '../todaySchedule.js';
 import { formatDateTime } from '../dateDisplay.js';
 import StatusChips from './StatusChips.jsx';
+import { scheduleActivity, scheduleKind } from '../scheduleIdentity.js';
 
 const EVENT_ICONS = { 이동: 'train', 관광: 'map', 식사: 'compass', 쇼핑: 'wallet', 공연: 'music', 숙박: 'hotel', 휴식: 'home' };
 
@@ -65,7 +66,7 @@ export default function TodayDashboard({ data, selectedDate, onDateChange, now }
   const inTrip = today && start <= today && today <= end;
   const day = selectedDate && start <= selectedDate && selectedDate <= end ? selectedDate : inTrip ? today : start;
   const isToday = day === today;
-  const { events, next } = planDay(data.sections.schedule, day, zone, now);
+  const { events, next, plan, warnings } = planDay(data.sections.schedule, day, zone, now);
   const bookings = new Map(data.sections.bookings.map(row => [row.id, row]));
   return (
     <section className="travel-today" aria-label="오늘 일정">
@@ -91,12 +92,15 @@ export default function TodayDashboard({ data, selectedDate, onDateChange, now }
                 <h4>{next.row.title}</h4>
                 <StatusChips statuses={{ 진행상태: next.row.fields.진행상태 }} />
               </div>
+              {scheduleActivity(next.row) && <p className="schedule-activity">{scheduleActivity(next.row)}</p>}
               {next.row.fields.장소 && <p>{next.row.fields.장소}</p>}
             </>
           ) : <p>{isToday ? '시작 시간이 확인된 다음 일정이 없습니다.' : '현지 오늘 날짜를 선택하면 다음 일정을 볼 수 있습니다.'}</p>}
         </section>
         <section className="travel-today-timeline" aria-labelledby="travel-day-timeline">
           <h3 id="travel-day-timeline">{isToday ? '오늘 타임라인' : '선택한 날짜의 타임라인'}</h3>
+          {plan && <p className="schedule-order-note">계획 순서로 표시하며 시각을 추정하지 않습니다.</p>}
+          {warnings.map(message => <p key={message} className="schedule-order-note">{message}</p>)}
           {events.length === 0 ? <p className="travel-empty">이 날짜에 등록된 일정이 없습니다.</p> : (
             <ol className="travel-timeline">
               {events.map(event => {
@@ -109,6 +113,7 @@ export default function TodayDashboard({ data, selectedDate, onDateChange, now }
                       <div className="travel-event-meta">
                         <span className="travel-event-time">{day} {allDay ? '종일' : time ?? '시간 미정'}</span>
                         {구분 && <span className="travel-badge">{구분}</span>}
+                        {scheduleKind(row) === 'transfer' && <span className="travel-badge">이동 구간</span>}
                         {passed && <span className="travel-badge">예정 시간 지남</span>}
                         {time && stamp === null && <span className="travel-badge">시간대 확인 필요</span>}
                         {eventEnd?.slice(0, 10) > day && <span className="travel-badge">{formatDateTime(eventEnd)} 종료</span>}
@@ -117,6 +122,7 @@ export default function TodayDashboard({ data, selectedDate, onDateChange, now }
                         <h4>{row.title}</h4>
                         <StatusChips statuses={{ 진행상태 }} />
                       </div>
+                      {scheduleActivity(row) && <p className="schedule-activity">{scheduleActivity(row)}</p>}
                       {장소 && <p className="travel-event-location">{장소}</p>}
                       <EventDetails row={row} end={eventEnd} bookings={bookings} tripZone={zone} />
                     </article>

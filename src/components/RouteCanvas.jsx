@@ -2,14 +2,41 @@ import { useEffect, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { routeDisplayPositions } from '../routeMapModel.js';
 import { routeTileConfig } from '../routeTileConfig.js';
+import { scheduleActivity } from '../scheduleIdentity.js';
+import { safeScheduleMapUrl, safeScheduleSourceUrl } from '../mapLinks.js';
 
-function popup(point, neighbours, select) {
+function popup(point, neighbours, select, bookings) {
   const container = document.createElement('div');
   for (const text of [`${point.date} ${point.time ?? '시간 미정'} · ${point.number ?? '보조 장소'}`,
     point.row.title, point.row.fields.장소 || '장소 미입력', point.row.fields.진행상태 || '상태 미입력']) {
     const line = document.createElement('p');
     line.textContent = text;
     container.append(line);
+  }
+  if (point.planned) {
+    const note = document.createElement('p');
+    note.textContent = '계획 순서 · 시각 추정 없음';
+    container.append(note);
+  }
+  for (const event of point.events) {
+    const block = document.createElement('div');
+    for (const text of [event.row.title, `${event.time ?? (event.allDay ? '종일' : '시간 미정')} · ${scheduleActivity(event.row) ?? '활동 미입력'}`,
+      event.row.fields.진행상태, event.row.note,
+      ...bookings.filter(booking => event.row.bookingIds?.includes(booking.id)).map(booking => `관련 예약: ${booking.title}`)].filter(Boolean)) {
+      const line = document.createElement('p');
+      line.textContent = text;
+      block.append(line);
+    }
+    for (const [name, href] of [['외부 지도 열기', safeScheduleMapUrl(event.row.mapUrl)], ['Notion 원본', safeScheduleSourceUrl(event.row.sourceUrl)]]) {
+      if (!href) continue;
+      const link = document.createElement('a');
+      link.textContent = name;
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      block.append(link);
+    }
+    container.append(block);
   }
   if (neighbours.length > 1) {
     const note = document.createElement('p');
@@ -26,7 +53,7 @@ function popup(point, neighbours, select) {
   return container;
 }
 
-export default function RouteCanvas({ model, selectedId, onSelect }) {
+export default function RouteCanvas({ model, bookings, selectedId, onSelect }) {
   const containerRef = useRef(null), mapRef = useRef(null), tileRef = useRef(null);
   const markersRef = useRef(new Map()), fitRef = useRef(null), tileFault = useRef(false);
   const leafletRef = useRef(null), tileTimerRef = useRef(null);
@@ -100,7 +127,7 @@ export default function RouteCanvas({ model, selectedId, onSelect }) {
         marker.bindPopup(() => {
           const origin = map.latLngToContainerPoint(positions.get(point.id));
           const neighbours = model.points.filter(other => origin.distanceTo(map.latLngToContainerPoint(positions.get(other.id))) < 34);
-          return popup(point, neighbours, id => { onSelect(id); markers.get(id)?.openPopup(); });
+          return popup(point, neighbours, id => { onSelect(id); markers.get(id)?.openPopup(); }, bookings);
         });
         marker.on('click', () => onSelect(point.id));
         markers.set(point.id, marker);
@@ -115,7 +142,7 @@ export default function RouteCanvas({ model, selectedId, onSelect }) {
       fit();
     } catch { queueMicrotask(() => { if (active) setError('동선 레이어를 표시하지 못했습니다. 아래 일정 목록을 이용해 주세요.'); }); }
     return () => { active = false; layer.remove(); markers.clear(); fitRef.current = null; };
-  }, [ready, model, onSelect]);
+  }, [ready, model, onSelect, bookings]);
 
   useEffect(() => {
     if (!ready) return;

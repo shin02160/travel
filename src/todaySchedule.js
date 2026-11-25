@@ -1,4 +1,5 @@
 import { calendarZone, validZone } from './destinationCities.js';
+import { scheduleKind, validRouteOrder } from './scheduleIdentity.js';
 const DAY = 86400000;
 const DATE = /^\d{4}-\d{2}-\d{2}/;
 const TIME = /T(\d{2}:\d{2})/;
@@ -116,21 +117,41 @@ export function compareScheduleEvents(a, b) {
     (a.time ?? '').localeCompare(b.time ?? '') || a.row.id.localeCompare(b.row.id);
 }
 
+// UUIDs stabilize presentation only. They never establish an uncertain visit order.
+export function orderScheduleDay(events) {
+  const candidates = events.filter(event => event.row.fields.진행상태 !== '취소' && scheduleKind(event.row) === 'visit');
+  const orders = candidates.map(event => validRouteOrder(event.row.routeOrder));
+  const supplied = orders.filter(value => value !== null);
+  const duplicate = new Set(supplied).size !== supplied.length;
+  const plan = candidates.length > 0 && supplied.length === candidates.length && !duplicate;
+  const sortedCandidates = plan ? candidates.toSorted((a, b) => a.row.routeOrder - b.row.routeOrder) : candidates.toSorted(compareScheduleEvents);
+  const known = candidates.filter(event => event.stamp !== null && validRouteOrder(event.row.routeOrder) !== null)
+    .toSorted((a, b) => a.row.routeOrder - b.row.routeOrder);
+  const conflict = known.some((event, i) => i > 0 && event.stamp < known[i - 1].stamp);
+  const unresolved = candidates.some(event => event.issue);
+  const unordered = !plan && candidates.some(event => !event.time || event.stamp === null);
+  const warnings = [duplicate && '동선 순서 중복', conflict && '동선 순서·시각 충돌',
+    unordered && '시간 미정·동선 순서 미확정', unresolved && '일정 시각·기간 확인 필요'].filter(Boolean);
+  const rest = events.filter(event => !candidates.includes(event)).toSorted(compareScheduleEvents);
+  return { events: plan ? [...sortedCandidates, ...rest] : events.toSorted(compareScheduleEvents),
+    candidates: sortedCandidates, plan, warnings, blocked: duplicate || conflict || unresolved || unordered };
+}
+
 export function planDay(rows, day, zone, now) {
   if (!day) return { events: [], next: null };
   const events = rows.flatMap(row => {
-    const [legacyStart, legacyEnd] = row.fields.일시?.split(' ~ ') ?? [];
-    const { start = legacyStart, end = legacyEnd, timeZone, allDay } = row.date ?? {};
-    if (datePart(start) !== day) return [];
-    const time = !allDay ? start?.match(TIME)?.[1] : null;
-    const stamp = time ? eventStamp(start, timeZone ?? zone) : null;
+    const timing = scheduleTiming(row, zone);
+    if (timing.day !== day) return [];
+    const { stamp } = timing;
     const ended = ENDED.has(row.fields.진행상태);
-    return [{ row, time, end, stamp, allDay, passed: !ended && stamp !== null && stamp < now }];
+    return [{ ...timing, passed: !ended && stamp !== null && stamp < now }];
   });
-  events.sort(compareScheduleEvents);
+  const ordered = orderScheduleDay(events);
   return {
-    events,
-    next: events.find(event => event.stamp !== null && event.stamp >= now &&
+    events: ordered.events,
+    plan: ordered.plan,
+    warnings: ordered.warnings,
+    next: events.toSorted(compareScheduleEvents).find(event => event.stamp !== null && event.stamp >= now &&
       !ENDED.has(event.row.fields.진행상태) && event.row.fields.진행상태 !== '진행중') ?? null,
   };
 }
