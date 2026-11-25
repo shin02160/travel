@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useId, useState } from 'react';
 import { Icon } from '../icons.jsx';
-import { chooseTrips, datePart, orderScheduleDay, scheduleTiming, tripCalendar } from '../todaySchedule.js';
-import { scheduleActivity, scheduleKind, scheduleMatches } from '../scheduleIdentity.js';
+import { chooseTrips, datePart, tripCalendar } from '../todaySchedule.js';
+import { scheduleMatches } from '../scheduleIdentity.js';
 import { formatDateTime, formatLocalTimestamp } from '../dateDisplay.js';
 import { calculateExpenseStatistics, expenseCategory, expenseCostType } from '../expenseStatistics.js';
 import { compareBookingUseDate, sortByDisplayOrder } from '../displayOrder.js';
@@ -15,7 +15,7 @@ import TodayDashboard from './TodayDashboard.jsx';
 import StatusChips from './StatusChips.jsx';
 import TravelGallery from './TravelGallery.jsx';
 import ScheduleMapBoundary from './ScheduleMapBoundary.jsx';
-import ScheduleEventDetails from './ScheduleEventDetails.jsx';
+import ScheduleTimeline from './ScheduleTimeline.jsx';
 import './NotionTravel.css';
 
 const ScheduleRouteMap = lazy(() => import('./ScheduleRouteMap.jsx'));
@@ -36,7 +36,6 @@ const COVERS = {
   '4136d8c5-8de1-81ce-a4c8-dbda8e993076': 'destination-shanghai.jpg',
   '4136d8c5-8de1-81f4-a070-e07878964af0': 'destination-guangzhou.jpg',
 };
-const SCHEDULE_ICONS = { 이동: 'train', 관광: 'map', 식사: 'compass', 쇼핑: 'wallet', 공연: 'music', 숙박: 'hotel', 휴식: 'home' };
 const BUDGET_FIELDS = ['총예산', '총지출', '잔여예산'];
 const FILTER_FIELDS = {
   bookings: '예약유형',
@@ -258,52 +257,6 @@ function Overview({ data, onSelectTab }) {
       </div>
     </section>
   );
-}
-
-function Timeline({ rows, zone, bookings }) {
-  const days = new Map();
-  for (const row of rows) {
-    const date = scheduleTiming(row, zone).day ?? '';
-    const day = days.get(date) ?? [];
-    day.push(row);
-    days.set(date, day);
-  }
-  return [...days].sort(([a], [b]) => (a || '9999').localeCompare(b || '9999')).map(([date, day]) => {
-    const ordered = orderScheduleDay(day.map(row => scheduleTiming(row, zone)));
-    return (
-    <section className="travel-day" key={date} aria-label={date || '날짜 미정'}>
-      <h3><Mark name="calendar" />{date ? <span className="travel-number">{date}</span> : '날짜 미정'}</h3>
-      {ordered.plan && <p className="schedule-order-note">계획 순서 · 시각을 추정하지 않습니다.</p>}
-      {ordered.warnings.map(message => <p key={message} className="schedule-order-note">{message}</p>)}
-      <ol className="travel-timeline">
-        {ordered.events.map(event => {
-          const { row, time, allDay } = event;
-          const { 구분, 장소 } = row.fields;
-          const activity = scheduleActivity(row);
-          return (
-            <li key={row.id}>
-              <span className="travel-timeline-icon"><Mark name={SCHEDULE_ICONS[구분] ?? 'calendar'} /></span>
-              <article className="travel-reader-card">
-                <div className="travel-event-meta">
-                  <span className="travel-event-time">{date || '날짜 미정'} {allDay ? '종일' : time ?? '시간 미정'}</span>
-                  {구분 && <span className="travel-badge">{구분}</span>}
-                  {scheduleKind(row) === 'transfer' && <span className="travel-badge">이동 구간</span>}
-                  {event.issue && <span className="travel-badge">{event.issue}</span>}
-                </div>
-                <div className="travel-item-heading">
-                  <h4>{row.title}</h4>
-                  <StatusChips statuses={{ 진행상태: row.fields.진행상태 }} />
-                </div>
-                {activity && <p className="schedule-activity">{activity}</p>}
-                {장소 && <p className="travel-event-location"><Mark name="pin" />{장소}</p>}
-                <ScheduleEventDetails row={row} bookings={bookings} />
-              </article>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
-  ); });
 }
 
 function ItemBlocks({ blocks }) {
@@ -587,14 +540,14 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
                 </label>
               )}
               {shoppingUnconfigured && <p className="travel-empty">쇼핑 리스트가 아직 연결되지 않았습니다.</p>}
-              {!shoppingUnconfigured && !showRoute && rows.length === 0 && <p className="travel-empty">{search || category !== null || (isExpenses && costType !== null)
+              {!shoppingUnconfigured && !showRoute && tab !== 'schedule' && rows.length === 0 && <p className="travel-empty">{search || category !== null || (isExpenses && costType !== null)
                 ? '조건에 맞는 항목이 없습니다.' : '등록된 항목이 없습니다.'}</p>}
               {tab === 'schedule' && (showRoute ? <ScheduleMapBoundary key={lastRead} onTimeline={() => setView(previous => ({ ...previous, scheduleView: 'timeline' }))}>
                 <Suspense fallback={<p role="status">동선 지도를 불러오는 중입니다.</p>}>
                   <ScheduleRouteMap trip={data.trip} rows={items} bookings={data.sections.bookings} now={now} selectedDate={view.routeDate}
                     onDateChange={date => setView(previous => ({ ...previous, routeDate: date }))} />
                 </Suspense>
-              </ScheduleMapBoundary> : <Timeline rows={rows} bookings={data.sections.bookings} zone={tripCalendar(data.trip, now).zone} />)}
+              </ScheduleMapBoundary> : <ScheduleTimeline rows={items} query={query} now={now} bookings={data.sections.bookings} zone={tripCalendar(data.trip, now).zone} />)}
               {!showStatistics && tab !== 'schedule' && rows.length > 0 && <RecordList rows={rows} tab={tab} tripId={data.trip.id}
                 opened={opened} onToggle={toggleItem} />}
             </div>
