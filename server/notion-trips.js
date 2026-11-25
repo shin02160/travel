@@ -1,3 +1,5 @@
+import { safeScheduleMapUrl } from '../src/mapLinks.js';
+import { scheduleCoordinates } from './scheduleCoordinates.js';
 import { NotionError, propertyValue, belongsTo, belongsToTrip, notionReader } from './notion-reader.js';
 import { loadCities, citiesForPage, publicCity, CityError } from './notion-cities.js';
 import { calendarZone } from '../src/destinationCities.js';
@@ -47,18 +49,6 @@ function bookingDetails(page) {
   return details;
 }
 
-function savedMapUrl(property) {
-  try {
-    const url = new URL(property?.url);
-    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
-    const googleMap = ['google.com', 'www.google.com'].includes(url.hostname) && /^\/maps(?:\/|$)/.test(url.pathname);
-    return googleMap || ['maps.google.com', 'maps.app.goo.gl', 'maps.apple.com', 'map.naver.com', 'map.kakao.com'].includes(url.hostname)
-      ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
 function scheduleDetails(page) {
   const properties = page.properties;
   const date = properties.일시?.date;
@@ -66,7 +56,8 @@ function scheduleDetails(page) {
   return {
     date: date?.start ? { start: date.start, end: date.end ?? null, timeZone: date.time_zone ?? null } : null,
     note: propertyValue(properties.메모),
-    mapUrl: savedMapUrl(properties['지도 URL']),
+    mapUrl: safeScheduleMapUrl(properties['지도 URL']?.url),
+    coordinates: scheduleCoordinates(properties),
     sourceUrl: page.url ? `https://www.notion.so/${page.id.replaceAll('-', '')}` : null,
     bookingIds: relation?.type === 'relation' && Array.isArray(relation.relation)
       ? relation.relation.map(item => item.id) : [],

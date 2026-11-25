@@ -436,6 +436,7 @@ test('detail verifies each data source and scopes every section to exactly one t
     메모: { type: 'rich_text', rich_text: [{ plain_text: '현지 메모' }] },
     '관련 예약': relation(visibleBooking.id, randomUUID()),
     '지도 URL': { type: 'url', url: 'https://www.google.com/maps/search/?api=1&query=Macau' },
+    위도: { type: 'number', number: 0 }, 경도: { type: 'number', number: 113.5 },
   });
   event.url = 'https://www.notion.so/trip-event';
   const unsafeMap = row('schedule', { 일정명: title('다른 일정'), 여행: relation(tripId),
@@ -500,6 +501,8 @@ test('detail verifies each data source and scopes every section to exactly one t
   assert.equal(scheduled.note, '현지 메모');
   assert.match(scheduled.sourceUrl, /^https:\/\/www\.notion\.so\/[a-f0-9]{32}$/);
   assert.match(scheduled.mapUrl, /^https:\/\/www\.google\.com\/maps\//);
+  assert.deepEqual(scheduled.coordinates, { lat: 0, lng: 113.5, source: 'notion' });
+  assert.equal(otherEvent.coordinates, null);
   assert.equal(otherEvent.mapUrl, null);
   assert.equal(res.body.sections.expenses[0].fields.결제자, '테스트 결제자');
   assert.deepEqual(res.body.sections.expenses.map(item => item.fields.결제수단), ['카드', null, null]);

@@ -232,6 +232,7 @@ body { margin: 0; font-size: 14px; }
 .travel-today-next .travel-event-time { margin-top: 8px; color: var(--primary-hover); }
 .travel-today-timeline > h3 { margin-bottom: 10px; }
 .travel-reader-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.schedule-view-switch { display: flex; gap: 8px; margin-block: 12px; }
 .travel-reader-chip-label { align-self: center; color: var(--text-secondary); font-size: 13px; }
 .travel-reader .travel-reader-chips button { border-radius: 999px; }
 .travel-reader-filter {
