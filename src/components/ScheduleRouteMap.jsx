@@ -1,20 +1,10 @@
 import { useMemo, useState } from 'react';
 import { buildRouteModel, initialRouteDate } from '../routeMapModel.js';
 import { tripCalendar } from '../todaySchedule.js';
-import { safeScheduleMapUrl, safeScheduleSourceUrl } from '../mapLinks.js';
 import RouteCanvas from './RouteCanvas.jsx';
 import ScheduleEventDetails from './ScheduleEventDetails.jsx';
 import { scheduleActivity } from '../scheduleIdentity.js';
 import './ScheduleRouteMap.css';
-
-function RowLinks({ row }) {
-  const mapUrl = safeScheduleMapUrl(row.mapUrl);
-  const sourceUrl = safeScheduleSourceUrl(row.sourceUrl);
-  return <div className="route-row-links">
-    {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer">외부 지도 열기</a>}
-    {sourceUrl && <a href={sourceUrl} target="_blank" rel="noopener noreferrer">Notion 원본</a>}
-  </div>;
-}
 
 export default function ScheduleRouteMap({ trip, rows, bookings = [], now, selectedDate, onDateChange }) {
   const calendar = tripCalendar(trip, now);
@@ -89,7 +79,7 @@ export default function ScheduleRouteMap({ trip, rows, bookings = [], now, selec
     {model.rows.some(item => item.cancelled || item.kind === 'private') && <section className="route-records" aria-label="지도 제외 일정">
       <h3>지도 제외 일정</h3>
       {model.rows.filter(item => item.cancelled || item.kind === 'private').map(item => <article className="travel-reader-card" key={item.id}>
-        <h4>{item.row.title}</h4><p>{item.reasons.join(' · ')}</p><RowLinks row={{ sourceUrl: item.row.sourceUrl }} />
+        <h4>{item.row.title}</h4><p>{item.reasons.join(' · ')}</p>
       </article>)}
     </section>}
   </div>;

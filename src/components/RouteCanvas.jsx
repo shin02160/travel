@@ -3,7 +3,7 @@ import 'leaflet/dist/leaflet.css';
 import { routeDisplayPositions, routeMarkerGroups } from '../routeMapModel.js';
 import { routeTileConfig } from '../routeTileConfig.js';
 import { scheduleActivity } from '../scheduleIdentity.js';
-import { safeScheduleMapUrl, safeScheduleSourceUrl } from '../mapLinks.js';
+import { safeScheduleMapUrl } from '../mapLinks.js';
 
 function popup(point, neighbours, select, bookings) {
   const container = document.createElement('div');
@@ -27,7 +27,7 @@ function popup(point, neighbours, select, bookings) {
       line.textContent = text;
       block.append(line);
     }
-    for (const [name, href] of [['외부 지도 열기', safeScheduleMapUrl(event.row.mapUrl)], ['Notion 원본', safeScheduleSourceUrl(event.row.sourceUrl)]]) {
+    for (const [name, href] of [['외부 지도 열기', safeScheduleMapUrl(event.row.mapUrl)]]) {
       if (!href) continue;
       const link = document.createElement('a');
       link.textContent = name;
