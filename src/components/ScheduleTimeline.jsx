@@ -32,7 +32,7 @@ function Visit({ group, bookings, now, zone }) {
       <div className="schedule-stop-body">
         {group.events.map(event => <section key={event.row.id} data-event-id={event.row.id}>
           <h5>{event.row.title} · {scheduleActivity(event.row) ?? '일정 상세'}</h5>
-          <StatusChips statuses={{ 진행상태: event.row.fields.진행상태 }} />
+          {event.row.fields.진행상태?.trim() !== '예정' && <StatusChips statuses={{ 진행상태: event.row.fields.진행상태 }} />}
           <ScheduleEventDetails row={event.row} bookings={bookings} tripZone={zone} inline />
         </section>)}
       </div>
@@ -46,7 +46,7 @@ function Connection({ entry, bookings, zone }) {
     <details>
       <summary><Icon name={entry.type === 'transfer' ? 'train' : 'calendar'} size={14} />
         <span>{scheduleClock(source)} · {source.row.title}{scheduleActivity(source.row) ? ` · ${scheduleActivity(source.row)}` : ''}</span>
-        <StatusChips statuses={{ 진행상태: source.row.fields.진행상태 }} />
+        {source.row.fields.진행상태?.trim() !== '예정' && <StatusChips statuses={{ 진행상태: source.row.fields.진행상태 }} />}
       </summary>
       <p className="schedule-stop-note">{entry.type === 'transfer' ? entry.resolved ? '연결 방문 확인 · 이동 기록' : '이동 기록 · 연결 순서 미확인' : source.reasons.join(' · ')}</p>
       <ScheduleEventDetails row={source.row} bookings={bookings} tripZone={zone} inline />
