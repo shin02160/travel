@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
-import { routeDisplayPositions } from '../routeMapModel.js';
+import { routeDisplayPositions, routeMarkerGroups } from '../routeMapModel.js';
 import { routeTileConfig } from '../routeTileConfig.js';
 import { scheduleActivity } from '../scheduleIdentity.js';
 import { safeScheduleMapUrl, safeScheduleSourceUrl } from '../mapLinks.js';
@@ -114,14 +114,16 @@ export default function RouteCanvas({ model, bookings, selectedId, onSelect }) {
     try {
       model.segments.forEach(segment => L.polyline([positions.get(segment.fromId), positions.get(segment.toId)],
         { color: segment.color.line, weight: 3, dashArray: '6 6', interactive: false }).addTo(layer));
-      model.points.forEach(point => {
+      routeMarkerGroups(model.points).forEach(points => {
+        const point = points[0];
         const badge = document.createElement('span');
-        badge.className = `route-number${point.number === null ? ' route-number-aux' : ''}`;
+        badge.className = `route-number${point.number === null ? ' route-number-aux' : ''}${points.length > 1 ? ' route-number-shared' : ''}`;
         badge.style.backgroundColor = point.color.fill;
-        badge.textContent = String(point.number ?? '•');
-        const label = `${point.date} ${point.number ?? '보조 장소'} · ${point.row.title}`;
+        badge.textContent = points.slice(0, 3).map(item => item.number ?? '•').join('·') + (points.length > 3 ? ` +${points.length - 3}` : '');
+        const label = points.map(item => `${item.date} ${item.number ?? '보조 장소'} · ${item.row.title}`).join(' / ');
+        const width = points.length > 1 ? 88 : 32;
         const marker = L.marker(positions.get(point.id), {
-          icon: L.divIcon({ html: badge, className: 'route-marker', iconSize: [32, 32], iconAnchor: [16, 16] }),
+          icon: L.divIcon({ html: badge, className: 'route-marker', iconSize: [width, 32], iconAnchor: [width / 2, 16] }),
           title: label, alt: label, keyboard: true, riseOnHover: true,
         }).addTo(layer);
         marker.bindPopup(() => {
@@ -130,7 +132,7 @@ export default function RouteCanvas({ model, bookings, selectedId, onSelect }) {
           return popup(point, neighbours, id => { onSelect(id); markers.get(id)?.openPopup(); }, bookings);
         });
         marker.on('click', () => onSelect(point.id));
-        markers.set(point.id, marker);
+        points.forEach(item => markers.set(item.id, marker));
       });
       markersRef.current = markers;
       const fit = () => {
@@ -147,13 +149,22 @@ export default function RouteCanvas({ model, bookings, selectedId, onSelect }) {
   useEffect(() => {
     if (!ready) return;
     const marker = markersRef.current.get(selectedId);
-    markersRef.current.forEach((value, id) => {
-      value.setZIndexOffset(id === selectedId ? 1000 : 0);
-      value.getElement()?.classList.toggle('route-marker-selected', id === selectedId);
+    new Set(markersRef.current.values()).forEach(value => {
+      const selected = value === marker;
+      value.setZIndexOffset(selected ? 1000 : 0);
+      value.getElement()?.classList.toggle('route-marker-selected', selected);
     });
-    if (marker) { mapRef.current.panTo(marker.getLatLng(), { animate: false }); marker.openPopup(); }
+    if (marker) {
+      const point = model.points.find(item => item.id === selectedId);
+      const map = mapRef.current;
+      const origin = map.latLngToContainerPoint(marker.getLatLng());
+      const positions = routeDisplayPositions(model.points);
+      const neighbours = model.points.filter(other => origin.distanceTo(map.latLngToContainerPoint(positions.get(other.id))) < 34);
+      marker.setPopupContent(popup(point, neighbours, onSelect, bookings));
+      map.panTo(marker.getLatLng(), { animate: false }); marker.openPopup();
+    }
     else mapRef.current?.closePopup();
-  }, [selectedId, model, ready]);
+  }, [selectedId, model, ready, bookings, onSelect]);
 
   return <div className="route-map-frame">
     <div ref={containerRef} className="route-map-canvas" role="region" aria-label="일정 동선 지도" />

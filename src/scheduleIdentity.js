@@ -23,17 +23,27 @@ export function transferEndpoints(row) {
   const chains = [row.title, row.fields.장소].map(normalizePlace).filter(value => /→|->|↔/.test(value))
     .map(value => value.split(/→|->|↔/).map(normalizePlace).filter(Boolean));
   if (!chains.length || chains.some(parts => parts.length !== 2)) return null;
-  // Conflicting endpoint descriptions never establish a route.
-  return chains.every(parts => parts[0] === chains[0][0] && parts[1] === chains[0][1]) ? chains[0] : null;
+  // The schedule title names the leg; detailed addresses may use other languages.
+  // This association is only for displaying transfer records, never map geometry.
+  return chains[0];
+}
+
+const placeKey = value => normalizePlace(value).replace(/[\s\p{P}\p{S}]/gu, '');
+
+export function placeMatches(a, b) {
+  const left = placeKey(a), right = placeKey(b);
+  return Boolean(left && right && left === right);
 }
 
 export function sameFacility(a, b) {
   const titleA = normalizePlace(a.title), titleB = normalizePlace(b.title);
   const placeA = normalizePlace(a.fields.장소), placeB = normalizePlace(b.fields.장소);
   const ca = a.coordinates, cb = b.coordinates;
-  const conflict = ca && cb && (ca.lat !== cb.lat || ca.lng !== cb.lng);
+  // Small rounding differences are common for a facility's representative point.
+  // A shared point by itself never proves that two different businesses are one.
+  const conflict = ca && cb && (Math.abs(ca.lat - cb.lat) > .00005 || Math.abs(ca.lng - cb.lng) > .00005);
   if (conflict) return false;
-  if (titleA && titleA === titleB && (!placeA || !placeB || placeA === placeB)) return true;
+  if (titleA && titleA === titleB && (!placeA || !placeB || placeMatches(placeA, placeB))) return true;
   // An explicit facility hierarchy may share a representative point. Proximity alone is never identity.
   const member = (title, facility) => title === facility || [' · ', ' / ', ' > '].some(separator => title.startsWith(facility + separator));
   return Boolean(placeA && placeA === placeB && ca && cb && member(titleA, placeA) && member(titleB, placeA));

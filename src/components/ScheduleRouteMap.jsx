@@ -41,8 +41,8 @@ export default function ScheduleRouteMap({ trip, rows, bookings = [], now, selec
     {all.rows.some(row => !row.date) && date !== 'all' && <p className="route-row-note">날짜 미정 일정은 전체 보기에서 확인할 수 있습니다.</p>}
     <p role="status">일정 {model.counts.total}건 · 방문 {model.counts.visits}곳 · 지도 {model.counts.mapped}/{model.counts.visits}곳 · 위치 미확인 {model.counts.missing}곳</p>
     <p className="route-row-note">이동 구간 {model.counts.transfers}건 · 순서 미확정 {model.counts.unordered}곳 · 취소 {model.counts.cancelled}건 · 사적 장소 제외 {model.counts.private}건</p>
-    {model.warnings.map(({ date, message }) => <p key={`${date}:${message}`} className="route-row-note">{date ?? '날짜 미정'} · {message} · 불확실한 연결은 생략합니다.</p>)}
-    {model.transfers.some(item => !item.resolved && !item.cancelled) && <p className="route-row-note">양쪽 방문을 확인할 수 없는 이동 구간은 연결을 보류합니다.</p>}
+    {model.warnings.map(({ date, message }) => <p key={`${date}:${message}`} className="route-row-note">{date ?? '날짜 미정'} · {message} · 확정된 방문 구간은 유지하며, 연결 보류 사유는 아래에서 확인할 수 있습니다.</p>)}
+    {model.transfers.some(item => !item.resolved && !item.cancelled) && <p className="route-row-note">일부 이동 기록의 방문 매칭을 확인하지 못했습니다. 점선은 이동 기록과 독립적으로 방문 순서에 따라 표시합니다.</p>}
     <div className="route-legend" aria-label="일자별 동선 색상">{legendDates.map(day => {
       const color = all.rows.find(row => row.date === day)?.color;
       return <span key={day}><i style={{ backgroundColor: color?.line ?? '#66736e' }} aria-hidden="true" />{day}</span>;
@@ -71,6 +71,12 @@ export default function ScheduleRouteMap({ trip, rows, bookings = [], now, selec
         </li>)}
       </ol>
     </div>
+    {model.omittedSegments.length > 0 && <section className="route-records" aria-label="동선 연결 보류 사유">
+      <h3>연결을 보류한 구간</h3>
+      {model.omittedSegments.map(item => <p key={`${item.fromId}:${item.toId}`} className="route-row-note">
+        {item.date ?? '날짜 미정'} · {model.visitGroups.find(group => group.id === item.fromId)?.row.title} → {model.visitGroups.find(group => group.id === item.toId)?.row.title}: {item.reasons.join(' · ')}
+      </p>)}
+    </section>}
     {model.transfers.length > 0 && <section className="route-records" aria-label="이동 구간 기록">
       <h3>이동 구간</h3>
       {model.transfers.map(item => <article className="travel-reader-card" key={item.id}>

@@ -55,7 +55,7 @@ test('canceled, untimed, all-day, undated, transfers and out-of-projection rows 
   assert.equal(model.points.find(r => r.id === 'all-day').number, null);
   assert.equal(model.rows.find(r => r.id === 'undated').mapped, false);
   assert.ok(model.rows.find(r => r.id === 'polar').reasons.includes('지도 투영 범위 밖'));
-  assert.equal(model.segments.length, 0);
+  assert.deepEqual(model.segments.map(s => [s.fromId, s.toId]), [['done', 'later']]);
   const day = buildRouteModel(model.rows.map(r => r.row), { ...options, date: '2026-11-21' });
   assert.equal(day.rows.some(r => r.id === 'undated'), false);
 });
@@ -72,12 +72,12 @@ test('dates are dynamic, include outside-period rows and fall back safely from m
   assert.deepEqual(buildRouteModel([], { date: '2026-11-21' }).points, []);
 });
 
-test('invalid dates/clocks/timezones cannot form routes; antimeridian positions keep true coordinates', () => {
+test('invalid clocks keep auxiliary locations, invalid days stay off-map; antimeridian positions remain true', () => {
   for (const start of ['2026-02-30T09:00', '2026-11-21T25:00']) {
     assert.equal(buildRouteModel([row('bad', start)], options).segments.length, 0);
-    assert.equal(buildRouteModel([row('bad', start)], options).points.length, 0);
+    assert.equal(buildRouteModel([row('bad', start)], options).points.length, start.startsWith('2026-02-30') ? 0 : 1);
   }
-  assert.equal(buildRouteModel([row('zone', '2026-11-21T09:00', undefined, {}, { timeZone: 'Mars/Invalid' })], options).points.length, 0);
+  assert.equal(buildRouteModel([row('zone', '2026-11-21T09:00', undefined, {}, { timeZone: 'Mars/Invalid' })], options).points[0].number, null);
   const points = [{ id: 'a', lat: 0, lng: 179 }, { id: 'b', lat: 0, lng: -179 }];
   const positions = routeDisplayPositions(points);
   assert.equal(Math.abs(positions.get('a')[1] - positions.get('b')[1]), 2);
@@ -87,14 +87,15 @@ test('invalid dates/clocks/timezones cannot form routes; antimeridian positions 
   assert.ok(Math.max(...display) - Math.min(...display) < .01, 'floating point cut must not wrap a nearby point around the world');
 });
 
-test('unresolved time blocks shortcuts for its day, invalid ranges stay listed, one point has no leg', () => {
+test('unplaced times do not veto known visits; invalid ranges remain explainable auxiliary points', () => {
   const unknown = row('unknown', '2026-11-21T10:00', undefined, {}, { timeZone: 'Mars/Invalid' });
   const model = buildRouteModel([row('a', '2026-11-21T09:00'), unknown, row('b', '2026-11-21T11:00')], options);
-  assert.equal(model.points.length, 2);
-  assert.equal(model.segments.length, 0);
+  assert.equal(model.points.length, 3);
+  assert.deepEqual(model.segments.map(s => [s.fromId, s.toId]), [['a', 'b']]);
+  assert.ok(model.omittedSegments.some(s => s.toId === 'unknown' && s.reasons.includes('방문 순서 미확정')));
   for (const end of ['2026-11-20T10:00', '2026-11-21T08:00', '2026-11-21T25:00']) {
     const invalid = buildRouteModel([row('bad', '2026-11-21T09:00', undefined, {}, { end })], options);
-    assert.equal(invalid.points.length, 0);
+    assert.equal(invalid.points.length, 1);
     assert.ok(invalid.rows[0].reasons.includes('일정 기간 오류'));
   }
   const single = buildRouteModel([row('single', '2026-11-21T09:00')], options);

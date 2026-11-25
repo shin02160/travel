@@ -7,6 +7,7 @@
 .route-map-canvas:focus-visible { outline: 3px solid var(--primary); }
 .route-number, .route-list-number { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; border: 2px solid #fff; color: #17221c; font-weight: 700; box-shadow: 0 1px 5px #0006; font-variant-numeric: tabular-nums; flex: none; }
 .route-number-aux { border-style: dashed; }
+.route-number-shared { width: 88px; border-radius: 16px; font-size: 12px; }
 .route-marker-selected .route-number { outline: 3px solid #163f31; }
 .route-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; }
 .route-legend span { display: inline-flex; align-items: center; gap: 5px; }

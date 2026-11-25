@@ -35,19 +35,21 @@ test('eight untimed visits use explicit 10..80 plan order as 1..8, without inven
   assert.equal(today.next, null);
 });
 
-test('all-day plan supports ordering; incomplete, duplicate and conflicting plans never invent links', () => {
+test('all-day plans connect; missing/duplicate orders stay local and explicit order wins over clocks', () => {
   const first = visit('a', '시설 A', null, 10), second = visit('b', '시설 B', null, 20);
   const allDay = { ...first, date: { start: date, allDay: true } };
   assert.equal(model([second, allDay]).segments.length, 1);
   for (const rows of [
     [first, { ...second, routeOrder: null }], [first, { ...second, routeOrder: 10 }],
-    [visit('a', '시설 A', '12:00', 10), visit('b', '시설 B', '09:00', 20)],
     [visit('a', '시설 A', '09:00'), second, visit('c', '시설 C', '10:00')],
   ]) {
     const result = model(rows);
     assert.equal(result.segments.length, 0);
     assert.ok(result.warnings.length > 0);
   }
+  const conflicting = model([visit('a', '시설 A', '12:00', 10), visit('b', '시설 B', '09:00', 20)]);
+  assert.deepEqual(legs(conflicting), [['a', 'b']]);
+  assert.ok(conflicting.warnings.some(item => item.message === '동선 순서·시각 충돌'));
 });
 
 test('pure transfer rows consume no visit number; confirmed adjacent endpoints keep the leg', () => {
@@ -56,20 +58,20 @@ test('pure transfer rows consume no visit number; confirmed adjacent endpoints k
   const result = model([b, transfer, a]);
   assert.equal(scheduleKind(transfer), 'transfer');
   assert.deepEqual(result.visitGroups.map(group => group.number), [1, 2]);
-  assert.equal(model([visit('a', '시설 A'), visit('home', '집', null, 20), visit('b', '시설 B', '10:00')]).segments.length, 0);
+  assert.equal(model([visit('a', '시설 A'), visit('home', '집', null, 20), visit('b', '시설 B', '10:00')]).segments.length, 1);
   assert.deepEqual(legs(result), [['a', 'b']]);
   assert.equal(result.transfers[0].resolved, true);
   assert.equal(result.rows.length, 3);
   assert.equal(result.points.some(point => point.id === 't'), false);
   assert.equal(model([a, { ...b, fields: { ...b.fields, 구분: '이동' } }]).points.length, 2);
-  assert.equal(model([a, visit('t', '시설 A → 경유지 → 시설 B', '09:30'), b]).segments.length, 0);
+  assert.deepEqual(legs(model([a, visit('t', '시설 A → 경유지 → 시설 B', '09:30'), b])), [['a', 'b']]);
   assert.equal(model([a, visit('missing', '미확인 방문', '09:20', null, null), transfer, b]).segments.length, 0);
 });
 
-test('untimed transfers connect explicitly ordered endpoints but unresolved transfers block shortcuts', () => {
+test('untimed and unresolved transfers never veto explicitly ordered visit legs', () => {
   const a = visit('a', '시설 A', null, 10), b = visit('b', '시설 B', null, 20);
   assert.equal(model([a, b, visit('t', '시설 A → 시설 B', null)]).segments.length, 1);
-  assert.equal(model([a, b, visit('t', '미확인 → 시설 B', null)]).segments.length, 0);
+  assert.equal(model([a, b, visit('t', '미확인 → 시설 B', null)]).segments.length, 1);
 });
 
 test('consecutive same-facility activities merge with every source retained; A B A remains three visits', () => {
