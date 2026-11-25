@@ -312,8 +312,6 @@ function RecordDetails({ tripId, itemId, section }) {
     return (
       <>
         {Object.keys(fields).length ? <Fields fields={fields} /> : <p>등록된 세부 정보가 없습니다.</p>}
-        <p className="travel-booking-source"><a href={`https://www.notion.so/${sourceId.replaceAll('-', '')}`}
-          target="_blank" rel="noopener noreferrer">Notion에서 예약 원본 보기</a></p>
       </>
     );
   }
