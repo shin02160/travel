@@ -25,14 +25,26 @@ export default function ScheduleRouteMap({ trip, rows, bookings = [], now, selec
       <button type="button" aria-pressed={date === 'all'} onClick={() => onDateChange('all')}>전체</button>
       {all.dates.map(day => <button key={day} type="button" aria-pressed={date === day} onClick={() => onDateChange(day)}>{day}</button>)}
     </div>
+    <p role="status">표시 {model.counts.mapped}/{model.counts.visits}곳 · 위치 미확인 {model.counts.missing}곳</p>
+    <details className="route-diagnostics">
+      <summary>상세 안내{model.omittedSegments.length > 0 ? ` · 연결 보류 ${model.omittedSegments.length}구간` : ''}</summary>
+      <div className="route-diagnostics-body">
     {!all.validPeriod && <p className="route-row-note">여행 기간을 확인해 주세요. 일정에 등록된 날짜로 표시합니다.</p>}
     {!zone && <p className="route-row-note">여행 시간대 확인 필요 · 날짜는 원본 일정의 현지 일자를 유지합니다.</p>}
     {all.truncated && <p className="route-row-note">여행 기간의 첫 366일과 실제 일정이 있는 날짜를 표시합니다.</p>}
     {all.rows.some(row => !row.date) && date !== 'all' && <p className="route-row-note">날짜 미정 일정은 전체 보기에서 확인할 수 있습니다.</p>}
-    <p role="status">일정 {model.counts.total}건 · 방문 {model.counts.visits}곳 · 지도 {model.counts.mapped}/{model.counts.visits}곳 · 위치 미확인 {model.counts.missing}곳</p>
+    <p className="route-row-note">일정 {model.counts.total}건 · 방문 {model.counts.visits}곳</p>
     <p className="route-row-note">이동 구간 {model.counts.transfers}건 · 순서 미확정 {model.counts.unordered}곳 · 취소 {model.counts.cancelled}건 · 사적 장소 제외 {model.counts.private}건</p>
     {model.warnings.map(({ date, message }) => <p key={`${date}:${message}`} className="route-row-note">{date ?? '날짜 미정'} · {message} · 확정된 방문 구간은 유지하며, 연결 보류 사유는 아래에서 확인할 수 있습니다.</p>)}
     {model.transfers.some(item => !item.resolved && !item.cancelled) && <p className="route-row-note">일부 이동 기록의 방문 매칭을 확인하지 못했습니다. 점선은 이동 기록과 독립적으로 방문 순서에 따라 표시합니다.</p>}
+    {model.omittedSegments.length > 0 && <section className="route-records" aria-label="동선 연결 보류 사유">
+      <h3>연결을 보류한 구간</h3>
+      {model.omittedSegments.map(item => <p key={`${item.fromId}:${item.toId}`} className="route-row-note">
+        {item.date ?? '날짜 미정'} · {model.visitGroups.find(group => group.id === item.fromId)?.row.title} → {model.visitGroups.find(group => group.id === item.toId)?.row.title}: {item.reasons.join(' · ')}
+      </p>)}
+    </section>}
+      </div>
+    </details>
     <div className="route-legend" aria-label="일자별 동선 색상">{legendDates.map(day => {
       const color = all.rows.find(row => row.date === day)?.color;
       return <span key={day}><i style={{ backgroundColor: color?.line ?? '#66736e' }} aria-hidden="true" />{day}</span>;
@@ -61,12 +73,6 @@ export default function ScheduleRouteMap({ trip, rows, bookings = [], now, selec
         </li>)}
       </ol>
     </div>
-    {model.omittedSegments.length > 0 && <section className="route-records" aria-label="동선 연결 보류 사유">
-      <h3>연결을 보류한 구간</h3>
-      {model.omittedSegments.map(item => <p key={`${item.fromId}:${item.toId}`} className="route-row-note">
-        {item.date ?? '날짜 미정'} · {model.visitGroups.find(group => group.id === item.fromId)?.row.title} → {model.visitGroups.find(group => group.id === item.toId)?.row.title}: {item.reasons.join(' · ')}
-      </p>)}
-    </section>}
     {model.transfers.length > 0 && <section className="route-records" aria-label="이동 구간 기록">
       <h3>이동 구간</h3>
       {model.transfers.map(item => <article className="travel-reader-card" key={item.id}>

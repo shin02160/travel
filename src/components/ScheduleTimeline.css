@@ -19,12 +19,11 @@
 .schedule-stop-body { padding: 0 14px 14px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .schedule-stop-body > section { padding-top: 10px; }
 .schedule-stop-body h5 { margin: 0 0 6px; font-size: 14px; }
-.schedule-connection { margin-left: 38px; min-width: 0; font-size: 12px; color: var(--primary); }
-.schedule-connection summary { display: flex; align-items: baseline; gap: 6px; cursor: pointer; min-height: 32px; padding-block: 4px; overflow-wrap: anywhere; }
+.schedule-connection { margin-left: 38px; min-width: 0; color: var(--text-primary); }
+.schedule-connection > details > summary { display: flex; align-items: center; gap: 6px; cursor: pointer; min-height: 44px; padding-block: 8px; overflow-wrap: anywhere; font-size: 13px; color: var(--primary); }
 .schedule-connection summary > svg { flex: none; align-self: center; }
 .schedule-connection summary > span:first-of-type { min-width: 0; flex: 1; }
 .schedule-connection .travel-badge { font-size: 11px; padding: 2px 5px; }
-.schedule-connection { margin-left: 38px; min-width: 0; }
 .schedule-unplaced { margin-top: 12px; }
 @media (max-width: 600px) {
   .schedule-stop-list { gap: 8px; }

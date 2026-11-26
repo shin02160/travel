@@ -1,6 +1,7 @@
 import { safeScheduleMapUrl } from '../mapLinks.js';
 import { formatDateTime } from '../dateDisplay.js';
 import { useState } from 'react';
+import ExpandableText from './ExpandableText.jsx';
 
 export default function ScheduleEventDetails({ row, bookings = [], label = '일정 정보', inline = false, tripZone }) {
   const [copyMessage, setCopyMessage] = useState('');
@@ -9,11 +10,11 @@ export default function ScheduleEventDetails({ row, bookings = [], label = '일�
   const content = <>
     <dl className="travel-reader-fields">
       {row.fields.일시 && <div><dt>일시</dt><dd>{formatDateTime(row.fields.일시)}</dd></div>}
-      {row.fields.장소 && <div><dt>장소·주소</dt><dd>{row.fields.장소}</dd></div>}
+      {row.fields.장소 && <div className="travel-field-wide"><dt>장소·주소</dt><dd>{row.fields.장소}</dd></div>}
       {(row.date?.timeZone ?? tripZone) && <div><dt>시간대</dt><dd>{row.date?.timeZone ?? tripZone}</dd></div>}
       {row.fields.구분 && <div><dt>구분</dt><dd>{row.fields.구분}</dd></div>}
-      {row.note && <div><dt>메모</dt><dd className="schedule-note">{row.note}</dd></div>}
-      {related.length > 0 && <div><dt>관련 예약</dt><dd><ul>{related.map(booking => <li key={booking.id}>{booking.title}</li>)}</ul></dd></div>}
+      {row.note && <div className="travel-field-wide"><dt>메모</dt><dd className="schedule-note"><ExpandableText key={row.note} text={row.note} /></dd></div>}
+      {related.length > 0 && <div className="travel-field-wide"><dt>관련 예약</dt><dd><ul>{related.map(booking => <li key={booking.id}>{booking.title}</li>)}</ul></dd></div>}
     </dl>
     <div className="route-row-links">
       {map && <a href={map} target="_blank" rel="noopener noreferrer">외부 지도 열기</a>}

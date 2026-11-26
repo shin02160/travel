@@ -4,7 +4,6 @@ import { scheduleActivity } from '../scheduleIdentity.js';
 import StatusChips from './StatusChips.jsx';
 import ScheduleEventDetails from './ScheduleEventDetails.jsx';
 import './ScheduleTimeline.css';
-import './ScheduleTimeline.css';
 
 const ICONS = { 이동: 'train', 관광: 'map', 식사: 'compass', 쇼핑: 'wallet', 공연: 'music', 숙박: 'hotel', 휴식: 'home' };
 
@@ -24,7 +23,6 @@ function Visit({ group, bookings, now, zone }) {
           <StatusChips statuses={Object.fromEntries(statuses.map((status, i) => [`진행상태 ${i + 1}`, status]))} /></span>
         <strong className="schedule-stop-title">{group.row.title}</strong>
         {group.events.map(event => <Activity key={event.row.id} event={event} grouped={group.events.length > 1} />)}
-        {group.planned && <span className="schedule-stop-note">계획 순서</span>}
         {group.collision && <span className="schedule-stop-note">동시각 · 순서 미확정</span>}
         {group.events.some(event => event.issue) && <span className="schedule-stop-note">일정 시각 확인 필요</span>}
         {group.events.some(event => event.stamp !== null && event.stamp < now && !['완료', '취소'].includes(event.row.fields.진행상태)) && <span className="schedule-stop-note">예정 시간 지남</span>}

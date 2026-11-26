@@ -16,6 +16,8 @@ import StatusChips from './StatusChips.jsx';
 import TravelGallery from './TravelGallery.jsx';
 import ScheduleMapBoundary from './ScheduleMapBoundary.jsx';
 import ScheduleTimeline from './ScheduleTimeline.jsx';
+import TravelNavigation from './TravelNavigation.jsx';
+import ExpandableText from './ExpandableText.jsx';
 import './NotionTravel.css';
 
 const ScheduleRouteMap = lazy(() => import('./ScheduleRouteMap.jsx'));
@@ -100,11 +102,13 @@ function Fields({ fields }) {
   return (
     <dl className="travel-reader-fields">
       {Object.entries(fields).map(([name, value]) => (
-        <div key={name}>
+        <div key={name} className={/메모|주소|장소/.test(name) ? 'travel-field-wide' : undefined}>
           <dt>{name}</dt>
           <dd className={typeof value === 'number' || DATE_FIELDS.has(name) ? 'travel-number' : undefined}>{typeof value === 'number'
             ? `${WON_FIELDS.has(name) ? '₩' : ''}${value.toLocaleString('ko-KR')}${name === '현지 금액' && fields.통화 ? ` ${fields.통화}` : ''}`
-            : (DATE_FIELDS.has(name) ? formatDateTime(value) : settlementLabel(value)) || '—'}</dd>
+            : name.includes('메모') && typeof value === 'string' && value
+              ? <ExpandableText key={value} text={value} />
+              : (DATE_FIELDS.has(name) ? formatDateTime(value) : settlementLabel(value)) || '—'}</dd>
         </div>
       ))}
     </dl>
@@ -454,7 +458,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
 
   return (
     <>
-      <header className="travel-hero">
+      <header className={`travel-hero${tab === 'overview' || tab === 'photos' ? '' : ' travel-hero-compact'}`}>
         <Cover trip={data.trip} photoSrc={tab !== 'photos' ? coverPhoto?.src : null} />
         <div className="travel-hero-copy">
           <div className="travel-item-heading">
@@ -465,13 +469,7 @@ function TripDetail({ data, tab, selectedDate, onSelectTab, onDateChange, onPinR
         </div>
       </header>
       <div className="travel-detail-layout">
-        <nav aria-label="여행 정보" className="travel-reader-tabs">
-          {Object.entries(TABS).map(([key, label]) => (
-            <button key={key} type="button" aria-pressed={tab === key} onClick={() => selectTab(key)}>
-              <Mark name={TAB_ICONS[key]} />{label}
-            </button>
-          ))}
-        </nav>
+        <TravelNavigation tabs={TABS} icons={TAB_ICONS} selected={tab} onSelect={selectTab} />
         {tab === 'overview' && <Overview data={data} onSelectTab={selectTab} />}
         {tab === 'today' && <TodayDashboard data={data} selectedDate={selectedDate} onDateChange={onDateChange} now={now} />}
         {tab === 'packing' && (

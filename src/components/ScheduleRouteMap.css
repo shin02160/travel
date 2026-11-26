@@ -1,6 +1,8 @@
 .schedule-route-map { display: grid; gap: 12px; min-width: 0; }
 .route-date-choices { display: flex; gap: 8px; overflow-x: auto; max-width: 100%; padding-bottom: 5px; }
 .route-date-choices button { flex: none; font-variant-numeric: tabular-nums; }
+.route-diagnostics > summary { cursor: pointer; min-height: 44px; align-content: center; color: var(--primary-hover); }
+.route-diagnostics-body { display: grid; gap: 8px; padding-block: 8px 12px; }
 .route-layout { display: grid; gap: 16px; min-width: 0; }
 .route-map-column, .route-map-frame { min-width: 0; }
 .route-map-canvas { height: clamp(320px, 55vh, 420px); width: 100%; border: 1px solid var(--border); border-radius: var(--radius-control); isolation: isolate; z-index: 0; }
