@@ -6,8 +6,8 @@
 .destination-city-switch { display: flex; gap: 8px; flex-wrap: wrap; }
 .destination-info button { min-height: 44px; padding: 8px 13px; border-radius: 999px; font: inherit; cursor: pointer; }
 .destination-info button:disabled { opacity: .65; cursor: default; }
-.destination-city-switch button { background: #fff; border: 1px solid #d1d6da; color: #263342; }
-.destination-city-switch button[aria-pressed="true"] { border-color: #aa422c; color: #8e321f; background: #fff0e9; font-weight: 700; }
+.destination-city-switch button { background: var(--surface); border: 1px solid var(--control-border); color: var(--text-primary); }
+.destination-city-switch button[aria-pressed="true"] { border-color: var(--primary); color: var(--primary-hover); background: var(--primary-soft); font-weight: 700; }
 .destination-info :focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .destination-weather { background: linear-gradient(145deg, #314358, #25364c 50%, #1c293b); color: #fff; border-radius: 19px; }
 .travel-reader .destination-weather p { color: #e9f1fa; }

@@ -1,12 +1,15 @@
 .schedule-route-map { display: grid; gap: 12px; min-width: 0; }
 .route-date-choices { display: flex; gap: 8px; overflow-x: auto; max-width: 100%; padding-bottom: 5px; }
 .route-date-choices button { flex: none; font-variant-numeric: tabular-nums; }
+.route-diagnostics > summary { cursor: pointer; min-height: 44px; align-content: center; color: var(--primary-hover); }
+.route-diagnostics-body { display: grid; gap: 8px; padding-block: 8px 12px; }
 .route-layout { display: grid; gap: 16px; min-width: 0; }
 .route-map-column, .route-map-frame { min-width: 0; }
 .route-map-canvas { height: clamp(320px, 55vh, 420px); width: 100%; border: 1px solid var(--border); border-radius: var(--radius-control); isolation: isolate; z-index: 0; }
 .route-map-canvas:focus-visible { outline: 3px solid var(--primary); }
 .route-number, .route-list-number { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; border: 2px solid #fff; color: #17221c; font-weight: 700; box-shadow: 0 1px 5px #0006; font-variant-numeric: tabular-nums; flex: none; }
 .route-number-aux { border-style: dashed; }
+.route-number-shared { width: 88px; border-radius: 16px; font-size: 12px; }
 .route-marker-selected .route-number { outline: 3px solid #163f31; }
 .route-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; }
 .route-legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -30,3 +33,8 @@
   .route-visit-list { max-height: 540px; overflow-y: auto; padding: 3px; }
   .route-map-canvas { height: 480px; }
 }
+.route-group-activities { padding-left: 20px; }
+.route-group-activities > li { margin-top: 10px; }
+.route-records { display: grid; gap: 10px; min-width: 0; }
+.route-records .travel-reader-card { overflow-wrap: anywhere; }
+.route-map-canvas .leaflet-popup-content a { display: inline-block; margin: 4px 8px 4px 0; }

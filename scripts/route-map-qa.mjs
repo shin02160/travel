@@ -8,26 +8,32 @@ const second = '10000000-0000-4000-8000-000000000002';
 let updated = false, expired = false;
 const row = (id, start, coordinates, extra = {}) => ({
   id: `20000000-0000-4000-8000-${String(id).padStart(12, '0')}`, title: `QA 장소 ${id}`,
+  activity: `활동 ${id}`, routeOrder: null, note: '합성 QA 메모 · 원본 정보 보존',
+  bookingIds: id === 1 ? ['30000000-0000-4000-8000-000000000001'] : [],
   fields: { 일시: start, 장소: `합성 테스트 지점 ${id}`, 구분: '관광', 진행상태: '예정', ...extra },
   date: { start, timeZone: 'Europe/London' }, coordinates,
   mapUrl: 'https://www.google.com/maps/search/?api=1&query=51.505,-0.09#WGS84',
   sourceUrl: 'https://www.notion.so/20000000000040008000000000000001',
 });
 const trip = id => ({ id, title: id === first ? '합성 QA · 동선 지도' : '합성 QA · 위치 없음',
-  fields: { 여행기간: '2026-12-05 ~ 2026-12-06', 상태: '준비중', 여행지: 'QA' },
+  fields: { 여행기간: '2026-12-05 ~ 2026-12-07', 상태: '준비중', 여행지: 'QA' },
   cities: [{ id: 'GB_QA', zone: 'Europe/London' }], calendarZone: 'Europe/London' });
+const named = (id, title, start, coordinates, extra = {}) => ({ ...row(id, start, coordinates, { 장소: title, ...extra }), title });
 const schedule = () => [
-  row(1, '2026-12-05T09:00', { lat: 51.505, lng: -0.09 }),
-  row(2, '2026-12-05T10:00', { lat: 51.506, lng: -0.091 }),
-  row(3, '2026-12-05T11:00', updated ? { lat: 51.5065, lng: -0.0915 } : null),
-  row(4, '2026-12-05T12:00', { lat: 51.507, lng: -0.092 }),
-  row(5, '2026-12-05T13:00', { lat: 51.505, lng: -0.09 }),
-  row(6, '2026-12-05T13:00', { lat: 51.505, lng: -0.09 }),
-  row(7, '2026-12-05', { lat: 51.504, lng: -0.093 }),
-  row(8, '2026-12-05T14:00', { lat: 51.508, lng: -0.094 }, { 진행상태: '취소' }),
-  row(9, '2026-12-06T09:00', { lat: 51.51, lng: -0.11 }),
-  row(10, '2026-12-06T10:00', { lat: 51.52, lng: -0.12 }),
-  { ...row(11, null, null), title: '<img src=x onerror=alert(1)>' },
+  named(1, '시설 A', '2026-12-05T09:00', { lat: 51.505, lng: -.09 }),
+  named(2, '시설 A', '2026-12-05T09:30', { lat: 51.505, lng: -.09 }),
+  named(3, '시설 A → 시설 B', '2026-12-05T09:45', null, { 구분: '이동' }),
+  named(4, '시설 B', '2026-12-05T10:00', { lat: 51.506, lng: -.091 }),
+  named(5, '시설 C', '2026-12-05T11:00', updated ? { lat: 51.5065, lng: -.0915 } : null),
+  named(6, '시설 D', '2026-12-05T12:00', { lat: 51.507, lng: -.092 }),
+  named(7, '시설 A', '2026-12-05T13:00', { lat: 51.505, lng: -.09 }),
+  named(8, '시설 E', '2026-12-05T13:00', { lat: 51.505, lng: -.09 }),
+  named(9, '취소 일정', '2026-12-05T14:00', { lat: 51.508, lng: -.094 }, { 진행상태: '취소' }),
+  named(10, '집 도착', '2026-12-05T15:00', { lat: 51.51, lng: -.1 }),
+  named(11, '<img src=x onerror=alert(1)>', null, null),
+  ...Array.from({ length: 8 }, (_, i) => ({ ...named(20 + i, `계획 시설 ${i + 1}`, '2026-12-06',
+    { lat: 51.51 + i * .001, lng: -.11 - i * .001 }), routeOrder: (i + 1) * 10 })),
+  named(30, '계획 시설 1 → 계획 시설 2', '2026-12-06', null, { 구분: '이동' }),
 ];
 const failedTiles = process.argv.includes('--failed-tiles');
 const server = await createServer({ configFile: false, root: process.cwd(),
@@ -47,11 +53,12 @@ const server = await createServer({ configFile: false, root: process.cwd(),
       if (!id) body = { trips: [trip(first), trip(second)] };
       else if (url.searchParams.get('section') === 'photos') body = { photos: [], coverId: null, configured: false, expiresAt };
       else if (url.searchParams.has('section')) { res.statusCode = 404; body = { error: 'item_not_found' }; }
-      else body = { trip: trip(id), expiresAt, sections: { schedule: id === first ? schedule() : [row(1, '2026-12-05T09:00', null)],
-        bookings: [], budgets: [], expenses: [], receipts: [], checklist: [], shopping: [] } };
+      else body = { trip: trip(id), expiresAt, sections: { schedule: id === first ? schedule() : [row(1, '2026-12-05T09:00', updated ? { lat: 51.505, lng: -.09 } : null)],
+        bookings: [{ id: '30000000-0000-4000-8000-000000000001', title: '합성 예약', fields: { 예약상태: '확정' } }],
+        budgets: [], expenses: [], receipts: [], checklist: [], shopping: [] } };
       res.end(JSON.stringify(body));
     });
-  } }], server: { host: '127.0.0.1', port: Number(process.env.ROUTE_QA_PORT) || (failedTiles ? 5180 : 5179), strictPort: true },
+  } }], server: { host: '0.0.0.0', port: Number(process.env.ROUTE_QA_PORT) || (failedTiles ? 5180 : 5179), strictPort: true },
 });
 await server.listen();
 console.log(`Route map QA: ${server.resolvedUrls.local[0]}#trip=${first}&tab=schedule`);

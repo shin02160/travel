@@ -1,5 +1,6 @@
 import { safeScheduleMapUrl } from '../src/mapLinks.js';
 import { scheduleCoordinates } from './scheduleCoordinates.js';
+import { validRouteOrder } from '../src/scheduleIdentity.js';
 import { NotionError, propertyValue, belongsTo, belongsToTrip, notionReader } from './notion-reader.js';
 import { loadCities, citiesForPage, publicCity, CityError } from './notion-cities.js';
 import { calendarZone } from '../src/destinationCities.js';
@@ -55,6 +56,8 @@ function scheduleDetails(page) {
   const relation = properties['관련 예약'];
   return {
     date: date?.start ? { start: date.start, end: date.end ?? null, timeZone: date.time_zone ?? null } : null,
+    activity: properties.활동?.type === 'rich_text' ? propertyValue(properties.활동)?.trim() || null : null,
+    routeOrder: properties['동선 순서']?.type === 'number' ? validRouteOrder(properties['동선 순서'].number) : null,
     note: propertyValue(properties.메모),
     mapUrl: safeScheduleMapUrl(properties['지도 URL']?.url),
     coordinates: scheduleCoordinates(properties),

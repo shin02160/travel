@@ -1,0 +1,37 @@
+.schedule-timeline { display: grid; gap: 20px; min-width: 0; }
+.schedule-timeline-day { min-width: 0; }
+.schedule-day-heading { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-variant-numeric: tabular-nums; }
+.schedule-stop-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.schedule-stop { position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; }
+.schedule-stop::before { content: ''; position: absolute; top: 30px; bottom: -10px; left: 14px; border-left: 1px dashed #a5c1b1; }
+.schedule-stop:last-child::before { display: none; }
+.schedule-stop-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--primary); background: var(--primary-soft); }
+.schedule-stop-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; min-width: 0; }
+.schedule-stop-card > summary { position: relative; list-style: none; cursor: pointer; padding: 12px 32px 12px 14px; display: grid; gap: 6px; min-height: 44px; }
+.schedule-stop-card > summary::-webkit-details-marker { display: none; }
+.schedule-stop-card > summary::after { content: '⌄'; position: absolute; right: 12px; bottom: 12px; color: var(--text-secondary); }
+.schedule-stop-card[open] > summary::after { transform: rotate(180deg); }
+.schedule-stop-card > summary:focus-visible, .schedule-connection summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 12px; }
+.schedule-stop-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; color: var(--primary); font-size: 13px; }
+.schedule-stop-title { font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
+.schedule-stop-activity { display: block; color: var(--text-secondary); font-size: 14px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+.schedule-stop-note { display: block; font-size: 12px; color: var(--text-secondary); }
+.schedule-stop-body { padding: 0 14px 14px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.schedule-stop-body > section { padding-top: 10px; }
+.schedule-stop-body h5 { margin: 0 0 6px; font-size: 14px; }
+.schedule-connection { margin-left: 38px; min-width: 0; color: var(--text-primary); }
+.schedule-connection > details > summary { display: flex; align-items: center; gap: 6px; cursor: pointer; min-height: 44px; padding-block: 8px; overflow-wrap: anywhere; font-size: 13px; color: var(--primary); }
+.schedule-connection summary > svg { flex: none; align-self: center; }
+.schedule-connection summary > span:first-of-type { min-width: 0; flex: 1; }
+.schedule-connection .travel-badge { font-size: 11px; padding: 2px 5px; }
+.schedule-unplaced { margin-top: 12px; }
+@media (max-width: 600px) {
+  .schedule-stop-list { gap: 8px; }
+  .schedule-stop { grid-template-columns: 26px minmax(0, 1fr); gap: 7px; }
+  .schedule-stop-icon { width: 26px; height: 26px; }
+  .schedule-stop::before { left: 12px; top: 27px; }
+  .schedule-stop-card > summary { padding: 10px 25px 10px 11px; gap: 4px; }
+  .schedule-stop-title { font-size: 15px; }
+  .schedule-stop-activity { font-size: 13px; }
+  .schedule-connection { margin-left: 33px; }
+}
